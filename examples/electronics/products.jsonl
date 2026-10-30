@@ -1,0 +1,22 @@
+{"product_id": "p01", "title": "Apple iPhone 15 128GB Black", "brand": "Apple", "category": "Smartphones", "price": "799 USD", "description": "6.1 inch Super Retina XDR display, A16 Bionic chip, USB-C port."}
+{"product_id": "p02", "title": "Samsung Galaxy S24 256GB Onyx Black", "brand": "Samsung", "category": "Smartphones", "price": "859 USD", "description": "6.2 inch Dynamic AMOLED 2X display, Galaxy AI features, 50MP camera."}
+{"product_id": "p03", "title": "Samsung Galaxy A55 5G 128GB Awesome Navy", "brand": "Samsung", "category": "Smartphones", "price": "449 USD", "description": "6.6 inch Super AMOLED display, 5000mAh battery, IP67."}
+{"product_id": "p04", "title": "Xiaomi Redmi Note 13 Pro 256GB", "brand": "Xiaomi", "category": "Smartphones", "price": "329 USD", "description": "200MP camera, 67W turbo charging, 120Hz AMOLED."}
+{"product_id": "p05", "title": "Apple AirPods Pro (2nd generation) with USB-C", "brand": "Apple", "category": "Earbuds", "price": "249 USD", "description": "Active noise cancellation, adaptive audio, MagSafe charging case."}
+{"product_id": "p06", "title": "Sony WH-1000XM5 Wireless Noise Cancelling Headphones", "brand": "Sony", "category": "Headphones", "price": "399 USD", "description": "Industry leading noise cancellation, 30 hour battery, over-ear."}
+{"product_id": "p07", "title": "Samsung Galaxy Buds2 Pro", "brand": "Samsung", "category": "Earbuds", "price": "229 USD", "description": "Wireless earbuds with intelligent active noise cancelling."}
+{"product_id": "p08", "title": "Anker 735 USB-C Charger 65W GaN", "brand": "Anker", "category": "Chargers", "price": "49 USD", "description": "Three port fast wall charger for laptops and phones."}
+{"product_id": "p09", "title": "Apple 20W USB-C Power Adapter", "brand": "Apple", "category": "Chargers", "price": "19 USD", "description": "Fast charging for iPhone and iPad."}
+{"product_id": "p10", "title": "Silicone Case for iPhone 15 with MagSafe", "brand": "Apple", "category": "Phone Cases", "price": "49 USD", "description": "Soft touch finish, microfiber lining."}
+{"product_id": "p11", "title": "Lenovo IdeaPad Slim 5 Laptop 16GB RAM 512GB SSD", "brand": "Lenovo", "category": "Laptops", "price": "699 USD", "description": "14 inch OLED, AMD Ryzen 7, integrated graphics."}
+{"product_id": "p12", "title": "ASUS ROG Strix G16 Gaming Laptop RTX 4060", "brand": "ASUS", "category": "Laptops", "price": "1399 USD", "description": "Intel Core i7, 16 inch 165Hz display, NVIDIA GeForce RTX 4060."}
+{"product_id": "p13", "title": "Apple MacBook Air 13 M3 8GB 256GB", "brand": "Apple", "category": "Laptops", "price": "1099 USD", "description": "Fanless design, 18 hour battery life."}
+{"product_id": "p14", "title": "Logitech MX Master 3S Wireless Mouse", "brand": "Logitech", "category": "Mice", "price": "99 USD", "description": "8K DPI sensor, quiet clicks, USB-C rechargeable."}
+{"product_id": "p15", "title": "گوشی موبایل سامسونگ گلکسی A55 ظرفیت 128 گیگابایت", "brand": "سامسونگ", "category": "گوشی موبایل", "price": "22,500,000 تومان", "description": "صفحه نمایش 6.6 اینچ سوپر امولد، باتری 5000 میلی آمپر ساعت"}
+{"product_id": "p16", "title": "هدفون بی سیم سونی WH-1000XM5 با قابلیت نویز کنسلینگ", "brand": "سونی", "category": "هدفون", "price": "18,900,000 تومان", "description": "حذف نویز فعال، 30 ساعت شارژدهی"}
+{"product_id": "p17", "title": "شارژر دیواری انکر 65 وات USB-C", "brand": "انکر", "category": "شارژر", "price": "2,400,000 تومان", "description": "شارژ سریع لپ تاپ و موبایل با سه درگاه"}
+{"product_id": "p18", "title": "لپ تاپ گیمینگ ایسوس ROG Strix G16 با گرافیک RTX 4060", "brand": "ایسوس", "category": "لپ تاپ", "price": "79,000,000 تومان", "description": "پردازنده Core i7 و نمایشگر 165 هرتز"}
+{"product_id": "p19", "title": "قاب سیلیکونی آیفون 15", "brand": "اپل", "category": "قاب گوشی", "price": "1,200,000 تومان", "description": "جنس سیلیکون نرم با پوشش داخلی"}
+{"product_id": "p20", "title": "ماوس بی سیم لاجیتک MX Master 3S", "brand": "لاجیتک", "category": "ماوس", "price": "5,900,000 تومان", "description": "سنسور 8000 DPI و کلیک بی صدا"}
+{"product_id": "p21", "title": "کتری برقی فیلیپس 1.7 لیتر", "brand": "فیلیپس", "category": "لوازم آشپزخانه", "price": "3,100,000 تومان", "description": "بدنه استیل، خاموش شدن خودکار"}
+{"product_id": "p22", "title": "Philips Electric Kettle 1.7L", "brand": "Philips", "category": "Kitchen Appliances", "price": "39 USD", "description": "Stainless steel, auto shut-off."}

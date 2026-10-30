@@ -1,0 +1,421 @@
+"""Evaluation pipeline: collect labels, score each system, and compare systems."""
+
+from __future__ import annotations
+
+import datetime as _dt
+import logging
+import random
+import statistics
+from collections import Counter
+from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
+from typing import Any
+
+from llm_search_eval.errors import ConfigError, JudgeError
+from llm_search_eval.judges.base import Judge
+from llm_search_eval.judges.cache import JudgmentCache, cache_key
+from llm_search_eval.metrics import DEFAULT_METRICS, Metric, parse_metrics
+from llm_search_eval.models import Dataset, Qrels, Run
+
+log = logging.getLogger(__name__)
+
+ProgressFn = Callable[[int, int], None]
+
+
+@dataclass(slots=True)
+class EvaluationConfig:
+    """Settings that control labelling, scoring, and system comparison."""
+
+    metrics: Sequence[str] = DEFAULT_METRICS
+    #: Rank cutoff applied to every run. Defaults to the largest metric cutoff.
+    depth: int | None = None
+    #: Minimum grade treated as relevant by binary metrics (precision, recall, MRR, MAP).
+    threshold: int = 2
+    gain: str = "exponential"
+    baseline: str | None = None
+    primary_metric: str | None = None
+    permutations: int = 10_000
+    seed: int = 13
+    concurrency: int = 4
+    title: str = "Search evaluation report"
+
+    def parsed_metrics(self) -> list[Metric]:
+        return parse_metrics(self.metrics)
+
+    def resolved_depth(self) -> int:
+        if self.depth is not None:
+            if self.depth < 1:
+                raise ConfigError("depth must be a positive integer")
+            return self.depth
+        cutoffs = [m.k for m in self.parsed_metrics() if m.k]
+        return max(cutoffs, default=10)
+
+    def resolved_primary(self) -> Metric:
+        metrics = self.parsed_metrics()
+        if self.primary_metric:
+            primary = Metric.parse(self.primary_metric)
+            if primary not in metrics:
+                raise ConfigError(f"primary metric {primary.label!r} is not in the metric list")
+            return primary
+        return next((m for m in reversed(metrics) if m.name == "ndcg"), metrics[0])
+
+    def validate(self) -> None:
+        self.parsed_metrics()
+        self.resolved_depth()
+        self.resolved_primary()
+        if not 1 <= self.threshold <= 3:
+            raise ConfigError("threshold must be between 1 and 3")
+        if self.gain not in {"exponential", "linear"}:
+            raise ConfigError("gain must be 'exponential' or 'linear'")
+        if self.permutations < 0:
+            raise ConfigError("permutations must be zero or positive")
+
+
+@dataclass(frozen=True, slots=True)
+class JudgedPair:
+    query_id: str
+    product_id: str
+    relevance: int
+    reason: str
+    source: str  # "judge" or "cache"
+
+
+@dataclass(slots=True)
+class LabelStats:
+    gold_used: int = 0
+    judged: int = 0
+    cached: int = 0
+    failed: int = 0
+    unknown_products: int = 0
+    unlabeled: int = 0
+    judge: str | None = None
+    errors: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "judge": self.judge,
+            "gold_used": self.gold_used,
+            "judged": self.judged,
+            "cached": self.cached,
+            "failed": self.failed,
+            "unknown_products": self.unknown_products,
+            "unlabeled": self.unlabeled,
+            "errors": self.errors[:20],
+        }
+
+
+@dataclass(slots=True)
+class EvaluationReport:
+    """Everything produced by one evaluation; serializable with :meth:`to_dict`."""
+
+    data: dict[str, Any]
+    judgments: list[JudgedPair]
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.data
+
+    def system(self, name: str) -> dict[str, Any]:
+        for system in self.data["systems"]:
+            if system["name"] == name:
+                return system
+        raise KeyError(name)
+
+    def mean(self, system: str, metric: str) -> float | None:
+        return self.system(system)["metrics"][metric]["mean"]
+
+
+def build_labels(
+    dataset: Dataset,
+    runs: Sequence[Run],
+    depth: int,
+    judge: Judge | None = None,
+    cache: JudgmentCache | None = None,
+    concurrency: int = 4,
+    progress: ProgressFn | None = None,
+) -> tuple[Qrels, LabelStats, list[JudgedPair]]:
+    """Merge gold labels with judge labels for every pair in the runs' top ``depth``."""
+    stats = LabelStats(judge=judge.fingerprint if judge else None)
+    labels: Qrels = {qid: dict(rels) for qid, rels in dataset.qrels.items()}
+    pending: dict[tuple[str, str], None] = {}  # ordered set
+    for run in runs:
+        for qid in dataset.queries:
+            for pid in run.ranking(qid, depth):
+                if (qid, pid) in pending or dataset.gold_label(qid, pid) is not None:
+                    continue
+                pending[(qid, pid)] = None
+    stats.gold_used = sum(
+        1
+        for qid in dataset.queries
+        for pid in {p for run in runs for p in run.ranking(qid, depth)}
+        if dataset.gold_label(qid, pid) is not None
+    )
+
+    todo: list[tuple[str, str]] = []
+    for qid, pid in pending:
+        if pid not in dataset.products:
+            stats.unknown_products += 1
+            stats.unlabeled += 1
+        elif judge is None:
+            stats.unlabeled += 1
+        else:
+            todo.append((qid, pid))
+
+    judged: list[JudgedPair] = []
+    if judge is None or not todo:
+        return labels, stats, judged
+
+    if cache is None:
+        cache = JudgmentCache()
+
+    def grade(pair: tuple[str, str]) -> JudgedPair:
+        qid, pid = pair
+        query, product = dataset.queries[qid], dataset.products[pid]
+        key = cache_key(judge.fingerprint, query, product)
+        hit = cache.get(key)
+        if hit is not None:
+            return JudgedPair(qid, pid, hit.relevance, hit.reason, "cache")
+        result = judge.judge(query, product)
+        cache.put(key, result, query_id=qid, product_id=pid)
+        return JudgedPair(qid, pid, result.relevance, result.reason, "judge")
+
+    done = 0
+    with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
+        futures = {pool.submit(grade, pair): pair for pair in todo}
+        for future in as_completed(futures):
+            done += 1
+            qid, pid = futures[future]
+            try:
+                pair = future.result()
+            except JudgeError as exc:
+                stats.failed += 1
+                stats.unlabeled += 1
+                stats.errors.append(str(exc))
+                log.warning("%s", exc)
+            else:
+                judged.append(pair)
+                labels.setdefault(qid, {})[pid] = pair.relevance
+                if pair.source == "cache":
+                    stats.cached += 1
+                else:
+                    stats.judged += 1
+            if progress:
+                progress(done, len(todo))
+    judged.sort(key=lambda p: (p.query_id, p.product_id))
+    return labels, stats, judged
+
+
+def score_run(
+    run: Run,
+    dataset: Dataset,
+    labels: Qrels,
+    metrics: Sequence[Metric],
+    depth: int,
+    threshold: int,
+    gain: str,
+) -> dict[str, Any]:
+    per_query: dict[str, dict[str, float | None]] = {}
+    slots = labeled = unknown = 0
+    for qid in dataset.queries:
+        ranking = run.ranking(qid, depth)
+        qlabels = labels.get(qid, {})
+        per_query[qid] = {
+            m.label: m.compute(ranking, qlabels, threshold=threshold, gain=gain) for m in metrics
+        }
+        slots += len(ranking)
+        labeled += sum(1 for pid in ranking if pid in qlabels)
+        unknown += sum(1 for pid in ranking if pid not in dataset.products)
+    aggregate = {}
+    for m in metrics:
+        values = [v[m.label] for v in per_query.values() if v[m.label] is not None]
+        aggregate[m.label] = {
+            "mean": statistics.fmean(values) if values else None,
+            "n": len(values),
+        }
+    return {
+        "name": run.name,
+        "metrics": aggregate,
+        "coverage": {
+            "queries_answered": sum(1 for q in dataset.queries if run.rankings.get(q)),
+            "queries_total": len(dataset.queries),
+            "results_at_depth": slots,
+            "labeled_at_depth": (labeled / slots) if slots else None,
+            "unknown_products": unknown,
+        },
+        "per_query": per_query,
+    }
+
+
+def paired_randomization_test(
+    a: Sequence[float], b: Sequence[float], permutations: int = 10_000, seed: int = 13
+) -> float | None:
+    """Two-sided paired sign-flip randomization test on the mean difference.
+
+    Returns ``None`` when there are no paired observations or ``permutations`` is 0.
+    """
+    if len(a) != len(b):
+        raise ValueError("paired samples must have equal length")
+    diffs = [x - y for x, y in zip(a, b, strict=True)]
+    if not diffs or permutations <= 0:
+        return None
+    observed = abs(sum(diffs))
+    if observed == 0:
+        return 1.0
+    rng = random.Random(seed)
+    extreme = 0
+    for _ in range(permutations):
+        total = sum(d if rng.random() < 0.5 else -d for d in diffs)
+        if abs(total) >= observed - 1e-12:
+            extreme += 1
+    return (extreme + 1) / (permutations + 1)
+
+
+def compare_systems(
+    systems: Sequence[dict[str, Any]],
+    metrics: Sequence[Metric],
+    baseline: str,
+    primary: Metric,
+    permutations: int,
+    seed: int,
+) -> dict[str, Any]:
+    base = next(s for s in systems if s["name"] == baseline)
+    deltas = []
+    tests = []
+    for system in systems:
+        if system["name"] == baseline:
+            continue
+        for m in metrics:
+            b = base["metrics"][m.label]["mean"]
+            v = system["metrics"][m.label]["mean"]
+            delta = None if b is None or v is None else v - b
+            relative = None if delta is None or not b else delta / b
+            deltas.append(
+                {
+                    "system": system["name"],
+                    "metric": m.label,
+                    "baseline": b,
+                    "value": v,
+                    "delta": delta,
+                    "relative": relative,
+                }
+            )
+        pairs = [
+            (system["per_query"][q][primary.label], base["per_query"][q][primary.label])
+            for q in base["per_query"]
+            if system["per_query"][q][primary.label] is not None
+            and base["per_query"][q][primary.label] is not None
+        ]
+        wins = sum(1 for x, y in pairs if x > y + 1e-9)
+        losses = sum(1 for x, y in pairs if y > x + 1e-9)
+        tests.append(
+            {
+                "system": system["name"],
+                "metric": primary.label,
+                "n": len(pairs),
+                "wins": wins,
+                "ties": len(pairs) - wins - losses,
+                "losses": losses,
+                "p_value": paired_randomization_test(
+                    [x for x, _ in pairs], [y for _, y in pairs], permutations, seed
+                ),
+            }
+        )
+    ranking = sorted(
+        (s["name"] for s in systems),
+        key=lambda n: (
+            -(next(s for s in systems if s["name"] == n)["metrics"][primary.label]["mean"] or 0.0)
+        ),
+    )
+    return {
+        "baseline": baseline,
+        "primary_metric": primary.label,
+        "ranking": ranking,
+        "deltas": deltas,
+        "significance": tests,
+    }
+
+
+def _by_language(
+    dataset: Dataset, systems: Sequence[dict[str, Any]], primary: Metric
+) -> dict[str, dict[str, dict[str, Any]]]:
+    langs = sorted({q.lang or "und" for q in dataset.queries.values()})
+    out: dict[str, dict[str, dict[str, Any]]] = {}
+    for system in systems:
+        out[system["name"]] = {}
+        for lang in langs:
+            values = [
+                system["per_query"][qid][primary.label]
+                for qid, q in dataset.queries.items()
+                if (q.lang or "und") == lang and system["per_query"][qid][primary.label] is not None
+            ]
+            out[system["name"]][lang] = {
+                "mean": statistics.fmean(values) if values else None,
+                "n": len(values),
+            }
+    return out
+
+
+def evaluate(
+    dataset: Dataset,
+    runs: Sequence[Run],
+    config: EvaluationConfig | None = None,
+    judge: Judge | None = None,
+    cache: JudgmentCache | None = None,
+    progress: ProgressFn | None = None,
+) -> EvaluationReport:
+    """Score every run against gold labels, filling gaps with ``judge`` when given."""
+    from llm_search_eval import __version__
+
+    config = config or EvaluationConfig()
+    config.validate()
+    if not runs:
+        raise ConfigError("at least one system run is required")
+    names = [r.name for r in runs]
+    duplicates = [n for n, c in Counter(names).items() if c > 1]
+    if duplicates:
+        raise ConfigError(f"duplicate system names: {', '.join(duplicates)}")
+    baseline = config.baseline or names[0]
+    if baseline not in names:
+        raise ConfigError(f"baseline {baseline!r} is not one of the systems: {', '.join(names)}")
+
+    metrics = config.parsed_metrics()
+    depth = config.resolved_depth()
+    primary = config.resolved_primary()
+
+    labels, stats, judged = build_labels(
+        dataset, runs, depth, judge, cache, config.concurrency, progress
+    )
+    systems = [
+        score_run(run, dataset, labels, metrics, depth, config.threshold, config.gain)
+        for run in runs
+    ]
+    comparison = compare_systems(
+        systems, metrics, baseline, primary, config.permutations, config.seed
+    )
+    langs = Counter(q.lang or "und" for q in dataset.queries.values())
+    data = {
+        "tool": {"name": "llm-search-eval", "version": __version__},
+        "title": config.title,
+        "generated_at": _dt.datetime.now(_dt.timezone.utc).replace(microsecond=0).isoformat(),
+        "config": {
+            "metrics": [m.label for m in metrics],
+            "primary_metric": primary.label,
+            "depth": depth,
+            "threshold": config.threshold,
+            "gain": config.gain,
+            "baseline": baseline,
+            "permutations": config.permutations,
+            "seed": config.seed,
+        },
+        "dataset": {
+            "queries": len(dataset.queries),
+            "products": len(dataset.products),
+            "gold_labels": sum(len(v) for v in dataset.qrels.values()),
+            "languages": dict(sorted(langs.items())),
+        },
+        "labels": stats.to_dict(),
+        "systems": systems,
+        "comparison": comparison,
+        "by_language": _by_language(dataset, systems, primary),
+    }
+    return EvaluationReport(data=data, judgments=judged)
