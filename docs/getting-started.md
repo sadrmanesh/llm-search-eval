@@ -9,10 +9,14 @@ pip install llm-search-eval
 or straight from a release tag:
 
 ```bash
-pip install "git+https://github.com/sadrmanesh/llm-search-eval@v0.2.0"
+pip install "git+https://github.com/sadrmanesh/llm-search-eval@v0.3.2"
 ```
 
 Optional extras let the connectors reuse official clients: `llm-search-eval[elasticsearch]`, `[opensearch]`, and `[algolia]`. They are not needed for the default HTTP mode.
+
+Or use the Docker image, `sadrmanesh/llm-search-eval` on Docker Hub or `ghcr.io/sadrmanesh/llm-search-eval`; see [Docker](docker.md).
+
+To try the library without installing anything, open the [browser demo on Hugging Face](https://huggingface.co/spaces/sadrmanesh/llm-search-eval-demo). It runs the package with Pyodide on the example data or on your own files. The example data is also published as the [llm-search-eval-electronics dataset](https://huggingface.co/datasets/sadrmanesh/llm-search-eval-electronics).
 
 From source, for development:
 

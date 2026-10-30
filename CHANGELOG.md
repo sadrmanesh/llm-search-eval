@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-30
+
+A Docker image for the CLI, and the project on Hugging Face.
+
 ### Added
 
+- A Docker image for the CLI on Docker Hub (`sadrmanesh/llm-search-eval`) and the GitHub Container Registry (`ghcr.io/sadrmanesh/llm-search-eval`), for `linux/amd64` and `linux/arm64`, tagged `X.Y.Z`, `X.Y`, and `latest`. It runs as a non-root user in `/work`; `EXTRAS` adds the optional clients at build time. The release workflow builds it on GHCR and copies it to Docker Hub when the `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` secrets are set, and CI builds and smoke tests it on every pull request. See the [Docker guide](https://sadrmanesh.github.io/llm-search-eval/docker/).
+- A browser demo on Hugging Face, <https://huggingface.co/spaces/sadrmanesh/llm-search-eval-demo>, which runs the package with Pyodide on the example data or on your own files, and the example data as the dataset <https://huggingface.co/datasets/sadrmanesh/llm-search-eval-electronics>.
 - `.github/workflows/mirror.yml`, which mirrors `main` and tags to `gitlab.com/sadrmanesh/llm-search-eval` when the `GITLAB_TOKEN` secret is set, and skips cleanly otherwise.
 
 ## [0.3.1] - 2026-10-30
@@ -85,7 +91,8 @@ Initial release.
 - Bilingual electronics example dataset with three systems and a sample report.
 - Continuous integration with ruff and pytest on Python 3.10, 3.11, and 3.12.
 
-[Unreleased]: https://github.com/sadrmanesh/llm-search-eval/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/sadrmanesh/llm-search-eval/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/sadrmanesh/llm-search-eval/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/sadrmanesh/llm-search-eval/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/sadrmanesh/llm-search-eval/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/sadrmanesh/llm-search-eval/compare/v0.1.0...v0.2.0

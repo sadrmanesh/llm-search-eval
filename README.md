@@ -10,7 +10,7 @@
 
 Built for e-commerce teams who ship ranking changes (BM25 to vectors, hybrid retrieval, rerankers, query rewriting) and need a trustworthy answer to one question: *is the new system actually better for shoppers?* First-class support for **Persian and English** queries.
 
-**Documentation:** <https://sadrmanesh.github.io/llm-search-eval/> · **Live sample dashboard:** <https://sadrmanesh.github.io/llm-search-eval/demo/report.html>
+**Documentation:** <https://sadrmanesh.github.io/llm-search-eval/> · **Live sample dashboard:** <https://sadrmanesh.github.io/llm-search-eval/demo/report.html> · **Try it in the browser:** [Hugging Face Space](https://huggingface.co/spaces/sadrmanesh/llm-search-eval-demo) · **Example data:** [Hugging Face dataset](https://huggingface.co/datasets/sadrmanesh/llm-search-eval-electronics)
 
 ---
 
@@ -75,10 +75,20 @@ pip install llm-search-eval
 or straight from a release tag:
 
 ```bash
-pip install "git+https://github.com/sadrmanesh/llm-search-eval@v0.3.1"
+pip install "git+https://github.com/sadrmanesh/llm-search-eval@v0.3.2"
 ```
 
 Optional extras let the connectors reuse official clients: `llm-search-eval[elasticsearch]`, `[opensearch]`, and `[algolia]`. They are not needed for the default HTTP mode.
+
+Or run the Docker image from [Docker Hub](https://hub.docker.com/r/sadrmanesh/llm-search-eval) or the GitHub Container Registry (`ghcr.io/sadrmanesh/llm-search-eval`), for `linux/amd64` and `linux/arm64`. Mount your data into `/work`:
+
+```bash
+docker run --rm -v "$PWD:/work" sadrmanesh/llm-search-eval:0.3.2 run \
+  -q eval/queries.jsonl -p eval/products.jsonl --qrels eval/qrels.csv \
+  -s bm25=eval/runs/bm25.jsonl -s hybrid=eval/runs/hybrid.trec --judge mock -o reports
+```
+
+More in [docs/docker.md](docs/docker.md).
 
 From source, for development:
 
@@ -316,7 +326,7 @@ It checks metric floors and drops against the baseline system or against a `--re
 The repository is also a reusable GitHub Action that runs the evaluation, applies the gate, writes the result to the job summary, and posts it as a pull request comment that is updated on every push:
 
 ```yaml
-- uses: sadrmanesh/llm-search-eval@v0.3.1
+- uses: sadrmanesh/llm-search-eval@v0.3.2
   env:
     OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   with:
@@ -434,6 +444,7 @@ The full documentation site is at <https://sadrmanesh.github.io/llm-search-eval/
 | [docs/ci.md](docs/ci.md) | The `gate` command and the GitHub Action |
 | [docs/pr-comments.md](docs/pr-comments.md) | Pull request comments and permissions |
 | [docs/connectors.md](docs/connectors.md) | Elasticsearch, OpenSearch, Algolia, Meilisearch, Typesense, HTTP/JSON |
+| [docs/docker.md](docs/docker.md) | The Docker image on Docker Hub and GHCR |
 | [docs/releasing.md](docs/releasing.md) | Versioning and PyPI publishing |
 
 ## Roadmap

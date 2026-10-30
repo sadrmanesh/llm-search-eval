@@ -161,3 +161,22 @@ jobs:
           cache-dependency-path: requirements-docs.txt
       - run: pip install -r requirements-docs.txt
       - run: mkdocs build --strict
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t llm-search-eval:ci .
+      - name: Smoke test the image
+        run: |
+          docker run --rm llm-search-eval:ci --version
+          mkdir -p reports && chmod 777 reports
+          docker run --rm -v "$PWD/examples/electronics:/work/data:ro" -v "$PWD/reports:/work/reports" \
+            llm-search-eval:ci run \
+            -q data/queries.jsonl -p data/products.jsonl --qrels data/qrels.csv \
+            -s bm25=data/runs/bm25.jsonl -s hybrid=data/runs/hybrid.trec \
+            --judge mock -o reports --quiet
+          test -s reports/report.html
+          docker run --rm -v "$PWD/reports:/work/reports:ro" llm-search-eval:ci gate reports/report.json --min ndcg@10=0.4
