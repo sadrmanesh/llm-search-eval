@@ -13,3 +13,4 @@ htmlcov/
 reports/
 .judge-cache*.jsonl
 .DS_Store
+site/

@@ -61,7 +61,7 @@ llm-search-eval = "llm_search_eval.cli:main"
 Homepage = "https://github.com/sadrmanesh/llm-search-eval"
 Repository = "https://github.com/sadrmanesh/llm-search-eval"
 Issues = "https://github.com/sadrmanesh/llm-search-eval/issues"
-Documentation = "https://github.com/sadrmanesh/llm-search-eval/tree/main/docs"
+Documentation = "https://sadrmanesh.github.io/llm-search-eval/"
 Changelog = "https://github.com/sadrmanesh/llm-search-eval/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]

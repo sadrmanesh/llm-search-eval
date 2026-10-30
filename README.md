@@ -4,10 +4,13 @@
 ![Python](https://img.shields.io/badge/python-3.10%20to%203.13-blue)
 ![Dependencies](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-sadrmanesh.github.io-3f51b5)](https://sadrmanesh.github.io/llm-search-eval/)
 
 **Measure product search quality with classic IR metrics and panels of LLM relevance judges, compare systems with statistical rigor, and block ranking regressions in CI.**
 
 Built for e-commerce teams who ship ranking changes (BM25 to vectors, hybrid retrieval, rerankers, query rewriting) and need a trustworthy answer to one question: *is the new system actually better for shoppers?* First-class support for **Persian and English** queries.
+
+**Documentation:** <https://sadrmanesh.github.io/llm-search-eval/> · **Live sample dashboard:** <https://sadrmanesh.github.io/llm-search-eval/demo/report.html>
 
 ---
 
@@ -360,6 +363,8 @@ print(gate.passed)
 - The LLM judge prompt states the query language and counts translations and transliterations between Persian and English as matches.
 
 ## Documentation
+
+The full documentation site is at <https://sadrmanesh.github.io/llm-search-eval/>. The guides are also readable here on GitHub:
 
 | Guide | Topic |
 | :--- | :--- |

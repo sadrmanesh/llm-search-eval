@@ -29,8 +29,9 @@ It contains:
 - a searchable query list with a drilldown that shows every system's ranking
   side by side, with grades, label sources, reasons, and panel votes.
 
-The [sample dashboard](../examples/electronics/sample-report/report.html) is
-generated from the example dataset; download it and open it in a browser.
+The [sample dashboard](https://sadrmanesh.github.io/llm-search-eval/demo/report.html) is
+generated from the example dataset. Its source file is
+[`examples/electronics/sample-report/report.html`](https://github.com/sadrmanesh/llm-search-eval/blob/main/examples/electronics/sample-report/report.html).
 
 ## Re-rendering a saved report
 
