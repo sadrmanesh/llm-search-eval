@@ -1,7 +1,5 @@
 name: llm-search-eval
-description: >-
-  Evaluate product search systems with IR metrics and LLM judges, publish a job
-  summary and an HTML dashboard, and fail the build when quality regresses.
+description: Evaluate product search with IR metrics and LLM judges, and fail the build when search quality regresses.
 author: Naser Sadrmanesh
 branding:
   icon: bar-chart-2
@@ -168,7 +166,7 @@ inputs:
     default: "3.12"
   package:
     description: >-
-      pip requirement to install, for example `llm-search-eval==0.3.0`. Defaults
+      pip requirement to install, for example `llm-search-eval==0.3.1`. Defaults
       to the version of the action itself.
     required: false
     default: ""
