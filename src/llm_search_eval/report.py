@@ -235,6 +235,7 @@ def render_markdown(report: EvaluationReport | dict[str, Any]) -> str:
             "",
         ]
     out += _judging_section(data.get("judging"))
+    out += _pairwise_section(data.get("pairwise"), cfg)
     out += _cost_section(data.get("cost"))
     out += [
         "---",
@@ -329,6 +330,62 @@ def _judging_section(judging: dict[str, Any] | None) -> list[str]:
             "than the gold labels.",
             "",
         ]
+    return out
+
+
+def _pairwise_section(pairwise: dict[str, Any] | None, cfg: dict[str, Any]) -> list[str]:
+    if not pairwise or not pairwise.get("comparisons"):
+        return []
+    order = "both orders, a win needs both to agree" if pairwise["swap"] else "one order"
+    out = [
+        "## Pairwise preference",
+        "",
+        f"Judge `{_escape(pairwise['judge'])}` compared the top {pairwise['k']} results of "
+        f"two systems side by side for each query ({order}).",
+        "",
+    ]
+    rows = []
+    for c in pairwise["comparisons"]:
+        ci = c.get("win_rate_ci")
+        rate = "n/a" if c["win_rate_b"] is None else f"{c['win_rate_b']:.1%}"
+        if ci:
+            rate += f" [{ci['low']:.1%}, {ci['high']:.1%}]"
+        p = c["p_value"]
+        flag = "" if p is None else (" (significant)" if p < 0.05 else "")
+        rows.append(
+            [
+                f"`{_escape(c['system_b'])}` vs `{_escape(c['system_a'])}`",
+                str(c["wins_b"]),
+                str(c["ties"]),
+                str(c["wins_a"]),
+                rate,
+                ("n/a" if p is None else f"{p:.4f}") + flag,
+                str(c["inconsistent"]),
+            ]
+        )
+    out += _table(
+        [
+            "B vs A",
+            "B wins",
+            "Ties",
+            "A wins",
+            f"B win rate ({_confidence_label(cfg)})",
+            "p-value",
+            "Inconsistent",
+        ],
+        rows,
+    )
+    out += [
+        "",
+        "Win rate counts decided queries only (ties excluded), with a Wilson interval. "
+        "p-values come from an exact sign test. Inconsistent queries got opposite "
+        "winners in the two orders and count as ties.",
+    ]
+    failed = sum(c["failed"] for c in pairwise["comparisons"])
+    skipped = sum(c["skipped_budget"] for c in pairwise["comparisons"])
+    if failed or skipped:
+        out.append(f"Not compared: {failed} failed, {skipped} skipped by the budget.")
+    out.append("")
     return out
 
 

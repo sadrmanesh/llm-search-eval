@@ -10,7 +10,7 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from llm_search_eval.agreement import gold_agreement, inter_judge_agreement
 from llm_search_eval.errors import ConfigError, JudgeError
@@ -22,6 +22,10 @@ from llm_search_eval.models import Dataset, Qrels, Query, Run
 from llm_search_eval.sampling import SampleResult, query_stratum, sample_queries
 from llm_search_eval.stats import bootstrap_ci, paired_bootstrap_ci
 from llm_search_eval.usage import BudgetExceededError, CostTracker
+
+if TYPE_CHECKING:
+    from llm_search_eval.judges.pairwise import PairwiseJudge
+    from llm_search_eval.pairwise import PairwiseCache
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +66,12 @@ class EvaluationConfig:
     stratify_by: str | None = None
     #: Smallest number of queries drawn from each group when sampling.
     min_per_stratum: int = 1
+    #: Results per system shown to the pairwise judge.
+    pairwise_k: int = 5
+    #: Judge each query in both orders to cancel position bias.
+    pairwise_swap: bool = True
+    #: ``(system_a, system_b)`` pairs to compare; default: each system vs the baseline.
+    pairwise_pairs: Sequence[tuple[str, str]] | None = None
 
     def parsed_metrics(self) -> list[Metric]:
         return parse_metrics(self.metrics)
@@ -97,6 +107,8 @@ class EvaluationConfig:
             raise ConfigError("calibration_sample must be a positive integer")
         if self.min_per_stratum < 0:
             raise ConfigError("min_per_stratum must not be negative")
+        if self.pairwise_k < 1:
+            raise ConfigError("pairwise_k must be a positive integer")
         if self.bootstrap < 0:
             raise ConfigError("bootstrap must be zero or positive")
         if not 0.0 < self.confidence < 1.0:
@@ -598,11 +610,15 @@ def evaluate(
     cache: JudgmentCache | None = None,
     progress: ProgressFn | None = None,
     tracker: CostTracker | None = None,
+    pairwise_judge: PairwiseJudge | None = None,
+    pairwise_cache: PairwiseCache | None = None,
 ) -> EvaluationReport:
     """Score every run against gold labels, filling gaps with ``judge`` when given.
 
     Pass a :class:`~llm_search_eval.usage.CostTracker` to price token usage and
     enforce a budget. Pairs left unjudged because of the budget count as unlabeled.
+    With ``pairwise_judge``, systems are also compared head to head (see
+    :mod:`llm_search_eval.pairwise`); that shares the tracker and budget.
     """
     from llm_search_eval import __version__
 
@@ -663,6 +679,32 @@ def evaluate(
         bootstrap=config.bootstrap,
         confidence=config.confidence,
     )
+    pairwise = None
+    if pairwise_judge is not None:
+        from llm_search_eval.pairwise import PairwiseCache, compare_pair, resolve_pairs
+
+        by_name = {run.name: run for run in runs}
+        shared_cache = PairwiseCache() if pairwise_cache is None else pairwise_cache
+        pairwise = {
+            "judge": pairwise_judge.label,
+            "k": config.pairwise_k,
+            "swap": config.pairwise_swap,
+            "comparisons": [
+                compare_pair(
+                    dataset,
+                    by_name[a],
+                    by_name[b],
+                    pairwise_judge,
+                    k=config.pairwise_k,
+                    swap=config.pairwise_swap,
+                    concurrency=config.concurrency,
+                    tracker=tracker,
+                    cache=shared_cache,
+                    confidence=config.confidence,
+                )
+                for a, b in resolve_pairs(names, baseline, list(config.pairwise_pairs or []))
+            ],
+        }
     langs = Counter(q.lang or "und" for q in dataset.queries.values())
     data = {
         "tool": {"name": "llm-search-eval", "version": __version__},
@@ -705,6 +747,7 @@ def evaluate(
             ),
         },
         "judging": judge_analysis(judged, judge, config.threshold),
+        "pairwise": pairwise,
         "cost": tracker.to_dict(),
     }
     if config.include_details:

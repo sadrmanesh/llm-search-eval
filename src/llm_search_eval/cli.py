@@ -172,6 +172,31 @@ def build_parser() -> argparse.ArgumentParser:
     )
     j.add_argument("--calibration-sample", type=int, metavar="N", help="judge at most N gold pairs")
 
+    pw = run.add_argument_group("pairwise comparison")
+    pw.add_argument(
+        "--pairwise-judge",
+        metavar="SPEC",
+        help="compare systems head to head with a pairwise judge: mock or "
+        "openai=MODEL[,base_url=URL,...] (uses --model, --base-url and friends)",
+    )
+    pw.add_argument(
+        "--pairwise",
+        dest="pairwise_pairs",
+        action="append",
+        default=[],
+        metavar="A:B",
+        help="systems to compare; repeatable (default: each system vs the baseline)",
+    )
+    pw.add_argument(
+        "--pairwise-k", type=int, default=5, help="results per system shown (default: 5)"
+    )
+    pw.add_argument(
+        "--no-swap",
+        action="store_true",
+        help="judge each query once instead of in both orders (half the cost, more bias)",
+    )
+    pw.add_argument("--pairwise-cache", help="JSONL cache of pairwise verdicts")
+
     c = run.add_argument_group("cost and budget")
     c.add_argument(
         "--price",
@@ -339,7 +364,7 @@ def _parse_formats(value: str, allowed: Sequence[str] = REPORT_FORMATS) -> list[
     return formats
 
 
-def _judge_from_spec(spec: str, args: argparse.Namespace) -> Judge:
+def _judge_options(spec: str, args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
     name, sep, rest = spec.partition("=")
     name = name.strip()
     options: dict[str, Any] = {}
@@ -363,7 +388,31 @@ def _judge_from_spec(spec: str, args: argparse.Namespace) -> Judge:
                 options[key] = value.strip()
             else:
                 options[key] = _option_value(value)
+    return name, options
+
+
+def _judge_from_spec(spec: str, args: argparse.Namespace) -> Judge:
+    name, options = _judge_options(spec, args)
     return create_judge(name, **options)
+
+
+def _pair_arg(value: str) -> tuple[str, str]:
+    a, sep, b = value.partition(":")
+    if not sep or not a.strip() or not b.strip():
+        raise ConfigError(f"invalid --pairwise {value!r}; expected SYSTEM_A:SYSTEM_B")
+    return a.strip(), b.strip()
+
+
+def _build_pairwise_judge(args: argparse.Namespace) -> Any:
+    spec = (args.pairwise_judge or "").strip()
+    if not spec or spec == "none":
+        if args.pairwise_pairs:
+            raise ConfigError("--pairwise needs --pairwise-judge")
+        return None
+    from llm_search_eval.judges.pairwise import create_pairwise_judge
+
+    name, options = _judge_options(spec, args)
+    return create_pairwise_judge(name, **options)
 
 
 def _build_judge(args: argparse.Namespace) -> Judge | None:
@@ -381,6 +430,12 @@ def _build_tracker(args: argparse.Namespace) -> CostTracker:
     prices = PriceTable.parse_specs(args.price, base=prices)
     budget = Budget(args.max_cost, args.max_tokens, args.max_judgments)
     return CostTracker(prices=prices, budget=budget)
+
+
+def _pairwise_cache(path: str | None) -> Any:
+    from llm_search_eval.pairwise import PairwiseCache
+
+    return PairwiseCache(path)
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -417,7 +472,11 @@ def cmd_run(args: argparse.Namespace) -> int:
         sample_size=args.sample,
         stratify_by=args.stratify,
         min_per_stratum=args.min_per_stratum,
+        pairwise_k=args.pairwise_k,
+        pairwise_swap=not args.no_swap,
+        pairwise_pairs=[_pair_arg(p) for p in args.pairwise_pairs] or None,
     )
+    pairwise_judge = _build_pairwise_judge(args)
     if args.stratify and args.sample is None and not args.quiet:
         print(
             f"note: no --sample; reporting every query, grouped by {args.stratify}", file=sys.stderr
@@ -431,10 +490,14 @@ def cmd_run(args: argparse.Namespace) -> int:
             cache=JudgmentCache(args.cache),
             progress=None if args.quiet else _progress,
             tracker=tracker,
+            pairwise_judge=pairwise_judge,
+            pairwise_cache=_pairwise_cache(args.pairwise_cache),
         )
     finally:
         if judge is not None:
             judge.close()
+        if pairwise_judge is not None:
+            pairwise_judge.close()
     written = write_reports(report, args.output_dir, formats)
     data = report.to_dict()
     if not args.quiet:
@@ -455,7 +518,9 @@ def cmd_run(args: argparse.Namespace) -> int:
             f"{data['cost']['budget']['skipped_pairs']} pair(s) were not judged",
             file=sys.stderr,
         )
-    failed = data["labels"]["failed"]
+    failed = data["labels"]["failed"] + sum(
+        c["failed"] for c in (data.get("pairwise") or {}).get("comparisons", [])
+    )
     if failed:
         print(f"error: {failed} judgment(s) failed; see report.json for details", file=sys.stderr)
         return EXIT_JUDGE_FAILURES
