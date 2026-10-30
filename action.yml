@@ -1,0 +1,271 @@
+name: llm-search-eval
+description: >-
+  Evaluate product search systems with IR metrics and LLM judges, publish a job
+  summary and an HTML dashboard, and fail the build when quality regresses.
+author: Naser Sadrmanesh
+branding:
+  icon: bar-chart-2
+  color: blue
+
+inputs:
+  queries:
+    description: Queries file (.jsonl, .json, .csv or .tsv).
+    required: true
+  products:
+    description: Product catalog file.
+    required: true
+  qrels:
+    description: Optional gold relevance labels (graded 0 to 3).
+    required: false
+    default: ""
+  systems:
+    description: >-
+      Run files to evaluate, one per line, as NAME=PATH or PATH. The first
+      system is the baseline unless `baseline` is set.
+    required: true
+  judges:
+    description: >-
+      Judge specs, one per line, for example `openai=gpt-4o-mini` or `mock`.
+      Two or more form a panel. Leave empty to use gold labels only.
+    required: false
+    default: ""
+  aggregate:
+    description: How a judge panel combines grades (majority, mean, median, min or max).
+    required: false
+    default: majority
+  calibrate:
+    description: Also judge gold-labeled pairs and report judge vs gold agreement.
+    required: false
+    default: "false"
+  cache:
+    description: JSONL judgment cache path; restore it with actions/cache to avoid paying twice.
+    required: false
+    default: ""
+  prices:
+    description: Model prices, one per line, as MODEL=INPUT,OUTPUT in USD per million tokens.
+    required: false
+    default: ""
+  max-cost:
+    description: Stop judging once this many USD have been spent.
+    required: false
+    default: ""
+  max-judgments:
+    description: Stop after this many fresh judgments.
+    required: false
+    default: ""
+  metrics:
+    description: Comma separated metrics. Defaults to the tool defaults.
+    required: false
+    default: ""
+  primary:
+    description: Primary metric used for ranking, significance tests and regression checks.
+    required: false
+    default: ""
+  baseline:
+    description: Baseline system name. Defaults to the first system.
+    required: false
+    default: ""
+  permutations:
+    description: Rounds for the paired randomization test.
+    required: false
+    default: "10000"
+  title:
+    description: Report title.
+    required: false
+    default: Search evaluation report
+  output-dir:
+    description: Directory for report.md, report.json, report.html and cost.json.
+    required: false
+    default: llm-search-eval-report
+  args:
+    description: Extra arguments for `llm-search-eval run`, one per line.
+    required: false
+    default: ""
+  min:
+    description: Quality floors, one per line, as METRIC=VALUE (for example ndcg@10=0.6).
+    required: false
+    default: ""
+  max-drop:
+    description: Largest allowed absolute drop of the gate metrics.
+    required: false
+    default: ""
+  max-relative-drop:
+    description: Largest allowed relative drop, for example 0.05 for 5 percent.
+    required: false
+    default: ""
+  reference:
+    description: >-
+      Path to an earlier report.json (for example from the default branch). When
+      set, drops are measured against it instead of against the baseline system.
+    required: false
+    default: ""
+  gate-metrics:
+    description: Metrics for the regression checks, one per line. Defaults to the primary metric.
+    required: false
+    default: ""
+  significant-only:
+    description: Fail on a drop only when it is statistically significant.
+    required: false
+    default: "false"
+  fail-on-regression:
+    description: Fail the step when a gate check fails.
+    required: false
+    default: "true"
+  python-version:
+    description: Python version to set up.
+    required: false
+    default: "3.12"
+  package:
+    description: >-
+      pip requirement to install, for example `llm-search-eval==0.2.0`. Defaults
+      to the version of the action itself.
+    required: false
+    default: ""
+
+outputs:
+  report-dir:
+    description: Directory that holds the reports.
+    value: ${{ steps.evaluate.outputs.report-dir }}
+  report-json:
+    description: Path to report.json.
+    value: ${{ steps.evaluate.outputs.report-json }}
+  report-html:
+    description: Path to the self-contained HTML dashboard.
+    value: ${{ steps.evaluate.outputs.report-html }}
+  passed:
+    description: "`true` when every gate check passed or no gate was configured."
+    value: ${{ steps.gate.outputs.passed }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install llm-search-eval
+      shell: bash
+      env:
+        PACKAGE: ${{ inputs.package }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        python -m pip install --disable-pip-version-check --quiet "${PACKAGE:-$ACTION_PATH}"
+        llm-search-eval --version
+
+    - name: Evaluate
+      id: evaluate
+      shell: bash
+      env:
+        IN_QUERIES: ${{ inputs.queries }}
+        IN_PRODUCTS: ${{ inputs.products }}
+        IN_QRELS: ${{ inputs.qrels }}
+        IN_SYSTEMS: ${{ inputs.systems }}
+        IN_JUDGES: ${{ inputs.judges }}
+        IN_AGGREGATE: ${{ inputs.aggregate }}
+        IN_CALIBRATE: ${{ inputs.calibrate }}
+        IN_CACHE: ${{ inputs.cache }}
+        IN_PRICES: ${{ inputs.prices }}
+        IN_MAX_COST: ${{ inputs.max-cost }}
+        IN_MAX_JUDGMENTS: ${{ inputs.max-judgments }}
+        IN_METRICS: ${{ inputs.metrics }}
+        IN_PRIMARY: ${{ inputs.primary }}
+        IN_BASELINE: ${{ inputs.baseline }}
+        IN_PERMUTATIONS: ${{ inputs.permutations }}
+        IN_TITLE: ${{ inputs.title }}
+        IN_OUTPUT_DIR: ${{ inputs.output-dir }}
+        IN_ARGS: ${{ inputs.args }}
+      run: |
+        set -euo pipefail
+        args=(run --queries "$IN_QUERIES" --products "$IN_PRODUCTS" --output-dir "$IN_OUTPUT_DIR"
+              --format md,json,html --title "$IN_TITLE" --permutations "$IN_PERMUTATIONS"
+              --aggregate "$IN_AGGREGATE" --quiet)
+        add_lines() {  # add_lines FLAG TEXT: one argument per non-empty line
+          local flag="$1" line
+          while IFS= read -r line; do
+            line="$(printf '%s' "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+            [ -n "$line" ] || continue
+            if [ -n "$flag" ]; then args+=("$flag" "$line"); else args+=("$line"); fi
+          done <<< "$2"
+        }
+        add_lines --system "$IN_SYSTEMS"
+        add_lines --judge "$IN_JUDGES"
+        add_lines --price "$IN_PRICES"
+        add_lines "" "$IN_ARGS"
+        [ -n "$IN_QRELS" ] && args+=(--qrels "$IN_QRELS")
+        [ -n "$IN_CACHE" ] && args+=(--cache "$IN_CACHE")
+        [ -n "$IN_MAX_COST" ] && args+=(--max-cost "$IN_MAX_COST")
+        [ -n "$IN_MAX_JUDGMENTS" ] && args+=(--max-judgments "$IN_MAX_JUDGMENTS")
+        [ -n "$IN_METRICS" ] && args+=(--metrics "$IN_METRICS")
+        [ -n "$IN_PRIMARY" ] && args+=(--primary "$IN_PRIMARY")
+        [ -n "$IN_BASELINE" ] && args+=(--baseline "$IN_BASELINE")
+        [ "$IN_CALIBRATE" = "true" ] && args+=(--calibrate)
+        llm-search-eval "${args[@]}"
+        {
+          echo "report-dir=$IN_OUTPUT_DIR"
+          echo "report-json=$IN_OUTPUT_DIR/report.json"
+          echo "report-html=$IN_OUTPUT_DIR/report.html"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Quality gate
+      id: gate
+      shell: bash
+      env:
+        REPORT: ${{ steps.evaluate.outputs.report-json }}
+        REPORT_DIR: ${{ steps.evaluate.outputs.report-dir }}
+        IN_MIN: ${{ inputs.min }}
+        IN_MAX_DROP: ${{ inputs.max-drop }}
+        IN_MAX_RELATIVE_DROP: ${{ inputs.max-relative-drop }}
+        IN_REFERENCE: ${{ inputs.reference }}
+        IN_GATE_METRICS: ${{ inputs.gate-metrics }}
+        IN_SIGNIFICANT_ONLY: ${{ inputs.significant-only }}
+        IN_PERMUTATIONS: ${{ inputs.permutations }}
+      run: |
+        set +e -uo pipefail
+        args=(gate "$REPORT" --permutations "$IN_PERMUTATIONS" --summary "$REPORT_DIR/gate.md"
+              --json "$REPORT_DIR/gate.json")
+        configured=false
+        while IFS= read -r line; do
+          line="$(printf '%s' "$line" | tr -d '[:space:]')"
+          [ -n "$line" ] && { args+=(--min "$line"); configured=true; }
+        done <<< "$IN_MIN"
+        while IFS= read -r line; do
+          line="$(printf '%s' "$line" | tr -d '[:space:]')"
+          [ -n "$line" ] && args+=(--metric "$line")
+        done <<< "$IN_GATE_METRICS"
+        [ -n "$IN_MAX_DROP" ] && { args+=(--max-drop "$IN_MAX_DROP"); configured=true; }
+        [ -n "$IN_MAX_RELATIVE_DROP" ] && { args+=(--max-relative-drop "$IN_MAX_RELATIVE_DROP"); configured=true; }
+        [ -n "$IN_REFERENCE" ] && args+=(--reference "$IN_REFERENCE")
+        [ "$IN_SIGNIFICANT_ONLY" = "true" ] && args+=(--significant-only)
+        if [ "$configured" != true ]; then
+          echo "passed=true" >> "$GITHUB_OUTPUT"
+          echo "No gate thresholds configured; skipping the quality gate."
+          exit 0
+        fi
+        llm-search-eval "${args[@]}"
+        code=$?
+        case "$code" in
+          0) echo "passed=true" >> "$GITHUB_OUTPUT" ;;
+          1) echo "passed=false" >> "$GITHUB_OUTPUT" ;;
+          *) exit "$code" ;;
+        esac
+
+    - name: Job summary
+      if: always() && steps.evaluate.outcome == 'success'
+      shell: bash
+      env:
+        REPORT_DIR: ${{ steps.evaluate.outputs.report-dir }}
+      run: |
+        {
+          [ -f "$REPORT_DIR/gate.md" ] && cat "$REPORT_DIR/gate.md" && echo
+          cat "$REPORT_DIR/report.md"
+          echo
+          echo "The interactive dashboard is \`$REPORT_DIR/report.html\`; upload it with actions/upload-artifact to share it."
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Fail on regression
+      if: steps.gate.outputs.passed == 'false' && inputs.fail-on-regression == 'true'
+      shell: bash
+      run: |
+        echo "::error title=Search quality gate failed::See the job summary for the failing checks."
+        exit 1
