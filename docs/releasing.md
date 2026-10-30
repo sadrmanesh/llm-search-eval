@@ -31,3 +31,7 @@ and then publishes with the first method that is configured:
 When neither is configured, the publish job prints a notice and finishes
 without uploading, so tagging never fails just because PyPI is not set up yet.
 The built distributions are always available as the `dist` workflow artifact.
+
+## Mirrors
+
+`.github/workflows/mirror.yml` pushes `main` and every tag to `gitlab.com/sadrmanesh/llm-search-eval`. It runs only when the `GITLAB_TOKEN` repository secret is set (a GitLab access token with the `write_repository` scope) and skips with a notice otherwise. Set the `GITLAB_NAMESPACE` repository variable to mirror to another GitLab namespace. GitHub stays the main repository for issues and pull requests.

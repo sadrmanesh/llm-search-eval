@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `.github/workflows/mirror.yml`, which mirrors `main` and tags to `gitlab.com/sadrmanesh/llm-search-eval` when the `GITLAB_TOKEN` secret is set, and skips cleanly otherwise.
+
 ## [0.3.1] - 2026-10-30
 
 ### Changed
