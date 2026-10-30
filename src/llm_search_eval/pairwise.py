@@ -87,7 +87,7 @@ class _Outcome:
     inconsistent: bool = False
 
 
-def _products(dataset: Dataset, ranking: list[str]) -> list[Product]:
+def ranked_products(dataset: Dataset, ranking: list[str]) -> list[Product]:
     return [dataset.products[pid] for pid in ranking if pid in dataset.products]
 
 
@@ -146,7 +146,7 @@ def compare_pair(
         ranked_a, ranked_b = run_a.ranking(qid, k), run_b.ranking(qid, k)
         if ranked_a == ranked_b:
             return _Outcome(qid, "tie", (), "identical results", "identical")
-        a, b = _products(dataset, ranked_a), _products(dataset, ranked_b)
+        a, b = ranked_products(dataset, ranked_a), ranked_products(dataset, ranked_b)
         forward, source = ask(query, a, b)
         backward = None
         if swap:

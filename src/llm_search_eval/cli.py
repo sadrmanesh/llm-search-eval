@@ -1,8 +1,9 @@
 """Command line interface for ``llm-search-eval``.
 
-Commands: ``run`` (evaluate), ``validate`` (check inputs), ``report`` (re-render
-a saved report), ``gate`` (fail CI on regressions), ``fetch`` (collect a run
-from a live search backend) and ``sample`` (draw a query sample).
+Commands: ``run`` (evaluate), ``estimate`` (pre-run cost), ``validate`` (check
+inputs), ``report`` (re-render a saved report), ``gate`` (fail CI on
+regressions), ``fetch`` (collect a run from a live search backend) and
+``sample`` (draw a query sample).
 """
 
 from __future__ import annotations
@@ -128,16 +129,8 @@ def _metric_floor(value: str) -> tuple[str, float]:
         raise argparse.ArgumentTypeError("expected METRIC=VALUE, for example ndcg@10=0.6") from None
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="llm-search-eval",
-        description="Evaluate and compare product search systems with IR metrics and LLM judges.",
-    )
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("-v", "--verbose", action="store_true", help="enable debug logging")
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    run = sub.add_parser("run", help="score and compare one or more search systems")
+def _add_evaluation_args(run: argparse.ArgumentParser) -> None:
+    """Options shared by ``run`` and ``estimate``."""
     _add_dataset_args(run)
     j = run.add_argument_group("judges")
     j.add_argument(
@@ -239,6 +232,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     _add_sampling_args(run)
 
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="llm-search-eval",
+        description="Evaluate and compare product search systems with IR metrics and LLM judges.",
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("-v", "--verbose", action="store_true", help="enable debug logging")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    run = sub.add_parser("run", help="score and compare one or more search systems")
+    _add_evaluation_args(run)
     o = run.add_argument_group("output")
     o.add_argument("--output-dir", "-o", default="reports", help="report directory")
     o.add_argument(
@@ -248,6 +253,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     o.add_argument("--title", default="Search evaluation report")
     o.add_argument("--quiet", action="store_true", help="do not print the summary table")
+
+    estimate = sub.add_parser(
+        "estimate",
+        help="estimate judge calls, tokens and cost of a run without calling any judge",
+        description="Takes the same options as run and prints how many pairs need a judge, "
+        "the estimated tokens and cost, and whether the budget is enough. Exit code 1 "
+        "when the budget would run out.",
+    )
+    _add_evaluation_args(estimate)
+    estimate.add_argument(
+        "--output-tokens",
+        type=int,
+        default=40,
+        metavar="N",
+        help="assumed reply tokens per judge call (default: %(default)s)",
+    )
+    estimate.add_argument("--json", action="store_true", help="print the estimate as JSON")
 
     validate = sub.add_parser("validate", help="check dataset and run files for problems")
     _add_dataset_args(validate)
@@ -388,6 +410,9 @@ def _judge_options(spec: str, args: argparse.Namespace) -> tuple[str, dict[str, 
                 options[key] = value.strip()
             else:
                 options[key] = _option_value(value)
+    if getattr(args, "command", None) == "estimate" and name == "openai":
+        # Nothing is sent while estimating, so a missing API key is fine.
+        options.setdefault("api_key", "not-needed-for-estimate")
     return name, options
 
 
@@ -438,6 +463,31 @@ def _pairwise_cache(path: str | None) -> Any:
     return PairwiseCache(path)
 
 
+def _evaluation_config(args: argparse.Namespace) -> EvaluationConfig:
+    return EvaluationConfig(
+        metrics=args.metrics,
+        depth=args.depth,
+        threshold=args.threshold,
+        gain=args.gain,
+        baseline=args.baseline,
+        primary_metric=args.primary,
+        permutations=args.permutations,
+        seed=args.seed,
+        bootstrap=args.bootstrap,
+        confidence=args.confidence,
+        concurrency=args.concurrency,
+        title=getattr(args, "title", "Search evaluation report"),
+        calibrate=args.calibrate,
+        calibration_sample=args.calibration_sample,
+        sample_size=args.sample,
+        stratify_by=args.stratify,
+        min_per_stratum=args.min_per_stratum,
+        pairwise_k=args.pairwise_k,
+        pairwise_swap=not args.no_swap,
+        pairwise_pairs=[_pair_arg(p) for p in args.pairwise_pairs] or None,
+    )
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     if not args.systems:
         raise LLMSearchEvalError("at least one --system NAME=PATH is required")
@@ -454,28 +504,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     if judge is None and args.calibrate:
         raise ConfigError("--calibrate needs at least one --judge")
 
-    config = EvaluationConfig(
-        metrics=args.metrics,
-        depth=args.depth,
-        threshold=args.threshold,
-        gain=args.gain,
-        baseline=args.baseline,
-        primary_metric=args.primary,
-        permutations=args.permutations,
-        seed=args.seed,
-        bootstrap=args.bootstrap,
-        confidence=args.confidence,
-        concurrency=args.concurrency,
-        title=args.title,
-        calibrate=args.calibrate,
-        calibration_sample=args.calibration_sample,
-        sample_size=args.sample,
-        stratify_by=args.stratify,
-        min_per_stratum=args.min_per_stratum,
-        pairwise_k=args.pairwise_k,
-        pairwise_swap=not args.no_swap,
-        pairwise_pairs=[_pair_arg(p) for p in args.pairwise_pairs] or None,
-    )
+    config = _evaluation_config(args)
     pairwise_judge = _build_pairwise_judge(args)
     if args.stratify and args.sample is None and not args.quiet:
         print(
@@ -525,6 +554,44 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"error: {failed} judgment(s) failed; see report.json for details", file=sys.stderr)
         return EXIT_JUDGE_FAILURES
     return EXIT_OK
+
+
+def cmd_estimate(args: argparse.Namespace) -> int:
+    from llm_search_eval.estimate import estimate_run, render_estimate
+    from llm_search_eval.pairwise import PairwiseCache
+
+    if not args.systems:
+        raise LLMSearchEvalError("at least one --system NAME=PATH is required")
+    dataset = load_dataset(args.queries, args.products, args.qrels)
+    runs = _load_runs(args.systems)
+    tracker = _build_tracker(args)
+    judge = _build_judge(args)
+    if judge is None and args.calibrate:
+        raise ConfigError("--calibrate needs at least one --judge")
+    pairwise_judge = _build_pairwise_judge(args)
+    try:
+        result = estimate_run(
+            dataset,
+            runs,
+            _evaluation_config(args),
+            judge=judge,
+            cache=JudgmentCache(args.cache) if args.cache else None,
+            pairwise_judge=pairwise_judge,
+            pairwise_cache=PairwiseCache(args.pairwise_cache) if args.pairwise_cache else None,
+            prices=tracker.prices,
+            budget=tracker.budget,
+            output_tokens=args.output_tokens,
+        )
+    finally:
+        if judge is not None:
+            judge.close()
+        if pairwise_judge is not None:
+            pairwise_judge.close()
+    if args.json:
+        print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
+    else:
+        print("\n".join(render_estimate(result)))
+    return 1 if result.budget_problems() else 0
 
 
 def cmd_sample(args: argparse.Namespace) -> int:
@@ -710,6 +777,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "gate": cmd_gate,
             "fetch": cmd_fetch,
             "sample": cmd_sample,
+            "estimate": cmd_estimate,
         }
         return commands[args.command](args)
     except LLMSearchEvalError as exc:

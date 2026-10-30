@@ -188,6 +188,26 @@ def _calibration_pairs(dataset: Dataset, sample: int | None, seed: int) -> list[
     return pairs
 
 
+def pending_pairs(dataset: Dataset, runs: Sequence[Run], depth: int) -> list[tuple[str, str]]:
+    """``(query_id, product_id)`` pairs in the runs' top ``depth`` that have no gold label.
+
+    Each pair appears once, in run order. Pairs whose product is missing from
+    the catalog are included; callers decide what to do with them.
+    """
+    pending: dict[tuple[str, str], None] = {}  # ordered set
+    for run in runs:
+        for qid in dataset.queries:
+            for pid in run.ranking(qid, depth):
+                if (qid, pid) not in pending and dataset.gold_label(qid, pid) is None:
+                    pending[(qid, pid)] = None
+    return list(pending)
+
+
+def calibration_pairs(dataset: Dataset, sample: int | None, seed: int) -> list[tuple[str, str]]:
+    """Gold-labeled pairs a calibrating judge grades as well."""
+    return _calibration_pairs(dataset, sample, seed)
+
+
 def build_labels(
     dataset: Dataset,
     runs: Sequence[Run],
@@ -209,13 +229,7 @@ def build_labels(
     """
     stats = LabelStats(judge=judge.label if judge else None)
     labels: Qrels = {qid: dict(rels) for qid, rels in dataset.qrels.items()}
-    pending: dict[tuple[str, str], None] = {}  # ordered set
-    for run in runs:
-        for qid in dataset.queries:
-            for pid in run.ranking(qid, depth):
-                if (qid, pid) in pending or dataset.gold_label(qid, pid) is not None:
-                    continue
-                pending[(qid, pid)] = None
+    pending = pending_pairs(dataset, runs, depth)
     stats.gold_used = sum(
         1
         for qid in dataset.queries
