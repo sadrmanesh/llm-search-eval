@@ -1,0 +1,559 @@
+{
+  "tool": {
+    "name": "llm-search-eval",
+    "version": "0.1.0"
+  },
+  "title": "Electronics catalog: lexical vs semantic vs hybrid",
+  "generated_at": "2026-10-30T15:43:15+00:00",
+  "config": {
+    "metrics": [
+      "ndcg@5",
+      "ndcg@10",
+      "precision@5",
+      "recall@10",
+      "mrr",
+      "map"
+    ],
+    "primary_metric": "ndcg@10",
+    "depth": 10,
+    "threshold": 2,
+    "gain": "exponential",
+    "baseline": "bm25",
+    "permutations": 10000,
+    "seed": 13
+  },
+  "dataset": {
+    "queries": 10,
+    "products": 22,
+    "gold_labels": 30,
+    "languages": {
+      "en": 5,
+      "fa": 5
+    }
+  },
+  "labels": {
+    "judge": "mock:desc=0",
+    "gold_used": 30,
+    "judged": 19,
+    "cached": 0,
+    "failed": 0,
+    "unknown_products": 0,
+    "unlabeled": 0,
+    "errors": []
+  },
+  "systems": [
+    {
+      "name": "bm25",
+      "metrics": {
+        "ndcg@5": {
+          "mean": 0.5304716019917938,
+          "n": 10
+        },
+        "ndcg@10": {
+          "mean": 0.5304716019917938,
+          "n": 10
+        },
+        "precision@5": {
+          "mean": 0.22000000000000003,
+          "n": 10
+        },
+        "recall@10": {
+          "mean": 0.4833333333333333,
+          "n": 10
+        },
+        "mrr": {
+          "mean": 0.8,
+          "n": 10
+        },
+        "map": {
+          "mean": 0.4305555555555555,
+          "n": 10
+        }
+      },
+      "coverage": {
+        "queries_answered": 9,
+        "queries_total": 10,
+        "results_at_depth": 29,
+        "labeled_at_depth": 1.0,
+        "unknown_products": 0
+      },
+      "per_query": {
+        "q01": {
+          "ndcg@5": 0.6723402705002273,
+          "ndcg@10": 0.6723402705002273,
+          "precision@5": 0.2,
+          "recall@10": 0.5,
+          "mrr": 1.0,
+          "map": 0.5
+        },
+        "q02": {
+          "ndcg@5": 0.5317708654591168,
+          "ndcg@10": 0.5317708654591168,
+          "precision@5": 0.4,
+          "recall@10": 0.6666666666666666,
+          "mrr": 0.5,
+          "map": 0.38888888888888884
+        },
+        "q03": {
+          "ndcg@5": 0.6403662530558959,
+          "ndcg@10": 0.6403662530558959,
+          "precision@5": 0.2,
+          "recall@10": 0.5,
+          "mrr": 1.0,
+          "map": 0.5
+        },
+        "q04": {
+          "ndcg@5": 0.6131471927654584,
+          "ndcg@10": 0.6131471927654584,
+          "precision@5": 0.2,
+          "recall@10": 0.5,
+          "mrr": 1.0,
+          "map": 0.5
+        },
+        "q05": {
+          "ndcg@5": 0.688482449852666,
+          "ndcg@10": 0.688482449852666,
+          "precision@5": 0.4,
+          "recall@10": 0.6666666666666666,
+          "mrr": 1.0,
+          "map": 0.6666666666666666
+        },
+        "q06": {
+          "ndcg@5": 0.5874203951744313,
+          "ndcg@10": 0.5874203951744313,
+          "precision@5": 0.2,
+          "recall@10": 0.5,
+          "mrr": 1.0,
+          "map": 0.5
+        },
+        "q07": {
+          "ndcg@5": 0.37062100517025215,
+          "ndcg@10": 0.37062100517025215,
+          "precision@5": 0.2,
+          "recall@10": 0.5,
+          "mrr": 0.5,
+          "map": 0.25
+        },
+        "q08": {
+          "ndcg@5": 0.5874203951744313,
+          "ndcg@10": 0.5874203951744313,
+          "precision@5": 0.2,
+          "recall@10": 0.5,
+          "mrr": 1.0,
+          "map": 0.5
+        },
+        "q09": {
+          "ndcg@5": 0.0,
+          "ndcg@10": 0.0,
+          "precision@5": 0.0,
+          "recall@10": 0.0,
+          "mrr": 0.0,
+          "map": 0.0
+        },
+        "q10": {
+          "ndcg@5": 0.6131471927654584,
+          "ndcg@10": 0.6131471927654584,
+          "precision@5": 0.2,
+          "recall@10": 0.5,
+          "mrr": 1.0,
+          "map": 0.5
+        }
+      }
+    },
+    {
+      "name": "semantic",
+      "metrics": {
+        "ndcg@5": {
+          "mean": 0.9865450434615728,
+          "n": 10
+        },
+        "ndcg@10": {
+          "mean": 0.9865450434615728,
+          "n": 10
+        },
+        "precision@5": {
+          "mean": 0.42000000000000004,
+          "n": 10
+        },
+        "recall@10": {
+          "mean": 0.9666666666666666,
+          "n": 10
+        },
+        "mrr": {
+          "mean": 1.0,
+          "n": 10
+        },
+        "map": {
+          "mean": 0.9666666666666666,
+          "n": 10
+        }
+      },
+      "coverage": {
+        "queries_answered": 10,
+        "queries_total": 10,
+        "results_at_depth": 42,
+        "labeled_at_depth": 1.0,
+        "unknown_products": 0
+      },
+      "per_query": {
+        "q01": {
+          "ndcg@5": 0.9696205698332473,
+          "ndcg@10": 0.9696205698332473,
+          "precision@5": 0.4,
+          "recall@10": 1.0,
+          "mrr": 1.0,
+          "map": 1.0
+        },
+        "q02": {
+          "ndcg@5": 0.8958298647824811,
+          "ndcg@10": 0.8958298647824811,
+          "precision@5": 0.4,
+          "recall@10": 0.6666666666666666,
+          "mrr": 1.0,
+          "map": 0.6666666666666666
+        },
+        "q03": {
+          "ndcg@5": 1.0,
+          "ndcg@10": 1.0,
+          "precision@5": 0.4,
+          "recall@10": 1.0,
+          "mrr": 1.0,
+          "map": 1.0
+        },
+        "q04": {
+          "ndcg@5": 1.0,
+          "ndcg@10": 1.0,
+          "precision@5": 0.4,
+          "recall@10": 1.0,
+          "mrr": 1.0,
+          "map": 1.0
+        },
+        "q05": {
+          "ndcg@5": 1.0,
+          "ndcg@10": 1.0,
+          "precision@5": 0.6,
+          "recall@10": 1.0,
+          "mrr": 1.0,
+          "map": 1.0
+        },
+        "q06": {
+          "ndcg@5": 1.0,
+          "ndcg@10": 1.0,
+          "precision@5": 0.4,
+          "recall@10": 1.0,
+          "mrr": 1.0,
+          "map": 1.0
+        },
+        "q07": {
+          "ndcg@5": 1.0,
+          "ndcg@10": 1.0,
+          "precision@5": 0.4,
+          "recall@10": 1.0,
+          "mrr": 1.0,
+          "map": 1.0
+        },
+        "q08": {
+          "ndcg@5": 1.0,
+          "ndcg@10": 1.0,
+          "precision@5": 0.4,
+          "recall@10": 1.0,
+          "mrr": 1.0,
+          "map": 1.0
+        },
+        "q09": {
+          "ndcg@5": 1.0,
+          "ndcg@10": 1.0,
+          "precision@5": 0.4,
+          "recall@10": 1.0,
+          "mrr": 1.0,
+          "map": 1.0
+        },
+        "q10": {
+          "ndcg@5": 1.0,
+          "ndcg@10": 1.0,
+          "precision@5": 0.4,
+          "recall@10": 1.0,
+          "mrr": 1.0,
+          "map": 1.0
+        }
+      }
+    },
+    {
+      "name": "hybrid",
+      "metrics": {
+        "ndcg@5": {
+          "mean": 0.9767451506431298,
+          "n": 10
+        },
+        "ndcg@10": {
+          "mean": 0.9767451506431298,
+          "n": 10
+        },
+        "precision@5": {
+          "mean": 0.42000000000000004,
+          "n": 10
+        },
+        "recall@10": {
+          "mean": 0.9666666666666666,
+          "n": 10
+        },
+        "mrr": {
+          "mean": 1.0,
+          "n": 10
+        },
+        "map": {
+          "mean": 0.9583333333333334,
+          "n": 10
+        }
+      },
+      "coverage": {
+        "queries_answered": 10,
+        "queries_total": 10,
+        "results_at_depth": 36,
+        "labeled_at_depth": 1.0,
+        "unknown_products": 0
+      },
+      "per_query": {
+        "q01": {
+          "ndcg@5": 0.9696205698332473,
+          "ndcg@10": 0.9696205698332473,
+          "precision@5": 0.4,
+          "recall@10": 1.0,
+          "mrr": 1.0,
+          "map": 1.0
+        },
+        "q02": {
+          "ndcg@5": 0.9617374216635709,
+          "ndcg@10": 0.9617374216635709,
+          "precision@5": 0.6,
+          "recall@10": 1.0,
+          "mrr": 1.0,
+          "map": 0.9166666666666666
+        },
+        "q03": {
+          "ndcg@5": 1.0,
+          "ndcg@10": 1.0,
+          "precision@5": 0.4,
+          "recall@10": 1.0,
+          "mrr": 1.0,
+          "map": 1.0
+        },
+        "q04": {
+          "ndcg@5": 1.0,
+          "ndcg@10": 1.0,
+          "precision@5": 0.4,
+          "recall@10": 1.0,
+          "mrr": 1.0,
+          "map": 1.0
+        },
+        "q05": {
+          "ndcg@5": 0.8838695436828513,
+          "ndcg@10": 0.8838695436828513,
+          "precision@5": 0.4,
+          "recall@10": 0.6666666666666666,
+          "mrr": 1.0,
+          "map": 0.6666666666666666
+        },
+        "q06": {
+          "ndcg@5": 0.9941825709069458,
+          "ndcg@10": 0.9941825709069458,
+          "precision@5": 0.4,
+          "recall@10": 1.0,
+          "mrr": 1.0,
+          "map": 1.0
+        },
+        "q07": {
+          "ndcg@5": 1.0,
+          "ndcg@10": 1.0,
+          "precision@5": 0.4,
+          "recall@10": 1.0,
+          "mrr": 1.0,
+          "map": 1.0
+        },
+        "q08": {
+          "ndcg@5": 1.0,
+          "ndcg@10": 1.0,
+          "precision@5": 0.4,
+          "recall@10": 1.0,
+          "mrr": 1.0,
+          "map": 1.0
+        },
+        "q09": {
+          "ndcg@5": 0.9580414003446834,
+          "ndcg@10": 0.9580414003446834,
+          "precision@5": 0.4,
+          "recall@10": 1.0,
+          "mrr": 1.0,
+          "map": 1.0
+        },
+        "q10": {
+          "ndcg@5": 1.0,
+          "ndcg@10": 1.0,
+          "precision@5": 0.4,
+          "recall@10": 1.0,
+          "mrr": 1.0,
+          "map": 1.0
+        }
+      }
+    }
+  ],
+  "comparison": {
+    "baseline": "bm25",
+    "primary_metric": "ndcg@10",
+    "ranking": [
+      "semantic",
+      "hybrid",
+      "bm25"
+    ],
+    "deltas": [
+      {
+        "system": "semantic",
+        "metric": "ndcg@5",
+        "baseline": 0.5304716019917938,
+        "value": 0.9865450434615728,
+        "delta": 0.456073441469779,
+        "relative": 0.8597509079794894
+      },
+      {
+        "system": "semantic",
+        "metric": "ndcg@10",
+        "baseline": 0.5304716019917938,
+        "value": 0.9865450434615728,
+        "delta": 0.456073441469779,
+        "relative": 0.8597509079794894
+      },
+      {
+        "system": "semantic",
+        "metric": "precision@5",
+        "baseline": 0.22000000000000003,
+        "value": 0.42000000000000004,
+        "delta": 0.2,
+        "relative": 0.9090909090909091
+      },
+      {
+        "system": "semantic",
+        "metric": "recall@10",
+        "baseline": 0.4833333333333333,
+        "value": 0.9666666666666666,
+        "delta": 0.4833333333333333,
+        "relative": 1.0
+      },
+      {
+        "system": "semantic",
+        "metric": "mrr",
+        "baseline": 0.8,
+        "value": 1.0,
+        "delta": 0.19999999999999996,
+        "relative": 0.24999999999999994
+      },
+      {
+        "system": "semantic",
+        "metric": "map",
+        "baseline": 0.4305555555555555,
+        "value": 0.9666666666666666,
+        "delta": 0.536111111111111,
+        "relative": 1.2451612903225804
+      },
+      {
+        "system": "hybrid",
+        "metric": "ndcg@5",
+        "baseline": 0.5304716019917938,
+        "value": 0.9767451506431298,
+        "delta": 0.44627354865133606,
+        "relative": 0.8412769825485206
+      },
+      {
+        "system": "hybrid",
+        "metric": "ndcg@10",
+        "baseline": 0.5304716019917938,
+        "value": 0.9767451506431298,
+        "delta": 0.44627354865133606,
+        "relative": 0.8412769825485206
+      },
+      {
+        "system": "hybrid",
+        "metric": "precision@5",
+        "baseline": 0.22000000000000003,
+        "value": 0.42000000000000004,
+        "delta": 0.2,
+        "relative": 0.9090909090909091
+      },
+      {
+        "system": "hybrid",
+        "metric": "recall@10",
+        "baseline": 0.4833333333333333,
+        "value": 0.9666666666666666,
+        "delta": 0.4833333333333333,
+        "relative": 1.0
+      },
+      {
+        "system": "hybrid",
+        "metric": "mrr",
+        "baseline": 0.8,
+        "value": 1.0,
+        "delta": 0.19999999999999996,
+        "relative": 0.24999999999999994
+      },
+      {
+        "system": "hybrid",
+        "metric": "map",
+        "baseline": 0.4305555555555555,
+        "value": 0.9583333333333334,
+        "delta": 0.5277777777777779,
+        "relative": 1.2258064516129037
+      }
+    ],
+    "significance": [
+      {
+        "system": "semantic",
+        "metric": "ndcg@10",
+        "n": 10,
+        "wins": 10,
+        "ties": 0,
+        "losses": 0,
+        "p_value": 0.001999800019998
+      },
+      {
+        "system": "hybrid",
+        "metric": "ndcg@10",
+        "n": 10,
+        "wins": 10,
+        "ties": 0,
+        "losses": 0,
+        "p_value": 0.001999800019998
+      }
+    ]
+  },
+  "by_language": {
+    "bm25": {
+      "en": {
+        "mean": 0.6292214063266728,
+        "n": 5
+      },
+      "fa": {
+        "mean": 0.43172179765691465,
+        "n": 5
+      }
+    },
+    "semantic": {
+      "en": {
+        "mean": 0.9730900869231457,
+        "n": 5
+      },
+      "fa": {
+        "mean": 1.0,
+        "n": 5
+      }
+    },
+    "hybrid": {
+      "en": {
+        "mean": 0.963045507035934,
+        "n": 5
+      },
+      "fa": {
+        "mean": 0.9904447942503258,
+        "n": 5
+      }
+    }
+  }
+}

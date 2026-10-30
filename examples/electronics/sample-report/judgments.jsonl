@@ -1,0 +1,19 @@
+{"query_id": "q01", "product_id": "p02", "relevance": 0, "reason": "matched 0/4 query terms: none", "source": "judge"}
+{"query_id": "q01", "product_id": "p14", "relevance": 1, "reason": "matched 1/4 query terms: wireless", "source": "judge"}
+{"query_id": "q02", "product_id": "p01", "relevance": 1, "reason": "matched 1/4 query terms: 128gb", "source": "judge"}
+{"query_id": "q02", "product_id": "p04", "relevance": 0, "reason": "matched 0/4 query terms: none", "source": "judge"}
+{"query_id": "q02", "product_id": "p07", "relevance": 2, "reason": "matched 2/4 query terms: galaxy, samsung", "source": "judge"}
+{"query_id": "q03", "product_id": "p01", "relevance": 0, "reason": "matched 0/5 query terms: none", "source": "judge"}
+{"query_id": "q03", "product_id": "p04", "relevance": 0, "reason": "matched 0/5 query terms: none", "source": "judge"}
+{"query_id": "q03", "product_id": "p14", "relevance": 0, "reason": "matched 0/5 query terms: none", "source": "judge"}
+{"query_id": "q04", "product_id": "p13", "relevance": 0, "reason": "matched 0/3 query terms: none", "source": "judge"}
+{"query_id": "q05", "product_id": "p06", "relevance": 2, "reason": "matched 1/2 query terms: wireless", "source": "judge"}
+{"query_id": "q05", "product_id": "p07", "relevance": 0, "reason": "matched 0/2 query terms: none", "source": "judge"}
+{"query_id": "q06", "product_id": "p07", "relevance": 0, "reason": "matched 0/5 query terms: none", "source": "judge"}
+{"query_id": "q06", "product_id": "p21", "relevance": 0, "reason": "matched 0/5 query terms: none", "source": "judge"}
+{"query_id": "q07", "product_id": "p04", "relevance": 0, "reason": "matched 0/4 query terms: none", "source": "judge"}
+{"query_id": "q07", "product_id": "p21", "relevance": 0, "reason": "matched 0/4 query terms: none", "source": "judge"}
+{"query_id": "q08", "product_id": "p21", "relevance": 0, "reason": "matched 0/5 query terms: none", "source": "judge"}
+{"query_id": "q09", "product_id": "p13", "relevance": 0, "reason": "matched 0/3 query terms: none", "source": "judge"}
+{"query_id": "q10", "product_id": "p09", "relevance": 0, "reason": "matched 0/4 query terms: none", "source": "judge"}
+{"query_id": "q10", "product_id": "p21", "relevance": 0, "reason": "matched 0/4 query terms: none", "source": "judge"}
