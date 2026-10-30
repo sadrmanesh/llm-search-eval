@@ -2,8 +2,8 @@
 
 Commands: ``run`` (evaluate), ``estimate`` (pre-run cost), ``validate`` (check
 inputs), ``report`` (re-render a saved report), ``gate`` (fail CI on
-regressions), ``fetch`` (collect a run from a live search backend) and
-``sample`` (draw a query sample).
+regressions), ``fetch`` (collect a run from a live search backend), ``sample``
+(draw a query sample) and ``comment`` (post the report on a pull request).
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -270,6 +271,36 @@ def build_parser() -> argparse.ArgumentParser:
         help="assumed reply tokens per judge call (default: %(default)s)",
     )
     estimate.add_argument("--json", action="store_true", help="print the estimate as JSON")
+
+    comment = sub.add_parser(
+        "comment",
+        help="post or update a pull request comment with a Markdown report",
+        description="Joins the given Markdown files into one pull request comment. A hidden "
+        "marker lets later runs update the same comment. In GitHub Actions the repository "
+        "and pull request number come from the environment. Missing permissions only "
+        "print a warning.",
+    )
+    comment.add_argument("files", nargs="+", help="Markdown files, for example gate.md report.md")
+    comment.add_argument("--repo", help="OWNER/NAME (default: $GITHUB_REPOSITORY)")
+    comment.add_argument("--pr", type=int, help="pull request number (default: from the event)")
+    comment.add_argument(
+        "--id",
+        dest="comment_id",
+        default="report",
+        help="comment identity; runs with the same id update one comment (default: report)",
+    )
+    comment.add_argument(
+        "--token-env",
+        default="GITHUB_TOKEN",
+        help="environment variable holding the token (default: %(default)s)",
+    )
+    comment.add_argument("--api-url", help="API base URL (default: $GITHUB_API_URL)")
+    comment.add_argument(
+        "--dry-run", action="store_true", help="print the comment instead of posting it"
+    )
+    comment.add_argument(
+        "--strict", action="store_true", help="exit with an error when the comment is not posted"
+    )
 
     validate = sub.add_parser("validate", help="check dataset and run files for problems")
     _add_dataset_args(validate)
@@ -594,6 +625,69 @@ def cmd_estimate(args: argparse.Namespace) -> int:
     return 1 if result.budget_problems() else 0
 
 
+def cmd_comment(args: argparse.Namespace) -> int:
+    from llm_search_eval.github import (
+        DEFAULT_API_URL,
+        GitHubClient,
+        PullRequestContext,
+        build_body,
+        context_from_env,
+        run_url,
+        upsert_comment,
+    )
+
+    parts = []
+    for name in args.files:
+        path = Path(name)
+        if not path.is_file():
+            if args.strict:
+                raise ConfigError(f"{name} does not exist")
+            continue
+        parts.append(path.read_text(encoding="utf-8").strip())
+    if not parts:
+        raise ConfigError("none of the comment files exist")
+    text = "\n\n".join(parts)
+    link = run_url()
+    footer = f"[Workflow run and full report]({link})" if link else ""
+    if args.dry_run:
+        print(build_body(text, args.comment_id, footer))
+        return 0
+
+    context = context_from_env()
+    repo = args.repo or (context.repository if context else None)
+    number = args.pr or (context.number if context else None)
+    api_url = args.api_url or (context.api_url if context else None)
+    api_url = api_url or os.environ.get("GITHUB_API_URL") or DEFAULT_API_URL
+    if not repo or not number:
+        message = "not a pull request (set --repo and --pr); no comment posted"
+        if args.strict:
+            raise ConfigError(message)
+        print(f"note: {message}", file=sys.stderr)
+        return 0
+    token = os.environ.get(args.token_env, "")
+    if not token:
+        message = f"${args.token_env} is empty; no comment posted"
+        if args.strict:
+            raise ConfigError(message)
+        print(f"warning: {message}", file=sys.stderr)
+        return 0
+    client = GitHubClient(token, api_url)
+    result = upsert_comment(
+        client,
+        PullRequestContext(repo, number, api_url),
+        text,
+        comment_id=args.comment_id,
+        footer=footer,
+    )
+    if result.action == "skipped":
+        if args.strict:
+            raise LLMSearchEvalError(f"comment not posted: {result.reason}")
+        print(f"warning: comment not posted: {result.reason}", file=sys.stderr)
+        return 0
+    print(f"{result.action} comment {result.url or ''}".rstrip())
+    return 0
+
+
 def cmd_sample(args: argparse.Namespace) -> int:
     from llm_search_eval.io import write_queries
     from llm_search_eval.sampling import sample_queries
@@ -778,6 +872,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "fetch": cmd_fetch,
             "sample": cmd_sample,
             "estimate": cmd_estimate,
+            "comment": cmd_comment,
         }
         return commands[args.command](args)
     except LLMSearchEvalError as exc:

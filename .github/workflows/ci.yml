@@ -52,10 +52,21 @@ jobs:
             --qrels examples/electronics/qrels.csv \
             -s bm25=examples/electronics/runs/bm25.jsonl \
             -s semantic=examples/electronics/runs/semantic.csv \
-            --judge mock -o reports --quiet
+            --judge mock --pairwise-judge mock -o reports --quiet
           test -s reports/report.html
+          grep -q "Pairwise preference" reports/report.md
           llm-search-eval gate reports/report.json --min ndcg@10=0.4
           llm-search-eval report reports/report.json --format md,html -o rerendered
+          llm-search-eval estimate \
+            -q examples/electronics/queries.jsonl \
+            -p examples/electronics/products.jsonl \
+            -s bm25=examples/electronics/runs/bm25.jsonl \
+            --judge openai=gpt-4o-mini --price gpt-4o-mini=0.15,0.6 --max-cost 1
+          llm-search-eval sample -q examples/electronics/queries.jsonl -o sample.jsonl \
+            --sample 50% --stratify lang
+          test "$(wc -l < sample.jsonl)" -eq 5
+          llm-search-eval comment reports/report.md --dry-run > comment.md
+          grep -q "llm-search-eval:report" comment.md
 
   action:
     name: GitHub Action
@@ -79,6 +90,9 @@ jobs:
             mock=noise=0.2,seed=3
           calibrate: "true"
           permutations: "2000"
+          bootstrap: "500"
+          pairwise-judge: mock
+          max-tokens: "100000"
           min: ndcg@10=0.4
           max-drop: "0.05"
           output-dir: action-report
@@ -89,6 +103,8 @@ jobs:
           REPORT_HTML: ${{ steps.pass.outputs.report-html }}
         run: |
           test "$PASSED" = "true"
+          grep -q "Pairwise preference" action-report/report.md
+          grep -q "Confidence intervals" action-report/report.md
           test -s "$REPORT_JSON"
           test -s "$REPORT_HTML"
           test -s action-report/cost.json
@@ -103,6 +119,8 @@ jobs:
           systems: |
             examples/electronics/runs/bm25.jsonl
           permutations: "0"
+          sample: "6"
+          comment: "false"
           min: ndcg@10=0.99
           output-dir: failing-report
       - name: Check that the regression failed the step
