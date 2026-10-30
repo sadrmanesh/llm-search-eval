@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from llm_search_eval.errors import ConfigError, ConnectorError
+from llm_search_eval.http import RequestTransport, urllib_request
 from llm_search_eval.judges.openai_compat import HTTPResponse, Transport, urllib_transport
 from llm_search_eval.models import Query, Run
 
@@ -113,6 +114,70 @@ def post_json(
         if attempt < max_retries:
             sleep(min(10.0, 0.5 * 2**attempt) + random.uniform(0, 0.25))
     raise ConnectorError(f"{what} failed: {last}")
+
+
+def request_json(
+    method: str,
+    url: str,
+    headers: Mapping[str, str],
+    payload: Any = None,
+    *,
+    timeout: float,
+    max_retries: int,
+    transport: RequestTransport | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+    what: str = "search request",
+) -> Any:
+    """Like :func:`post_json` for any HTTP method; ``payload`` ``None`` sends no body."""
+    send = transport or urllib_request
+    body = None if payload is None else json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    all_headers = dict(headers)
+    if body is not None:
+        all_headers.setdefault("Content-Type", "application/json")
+    last = ""
+    for attempt in range(max_retries + 1):
+        try:
+            response: HTTPResponse = send(method, url, all_headers, body, timeout)
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            last = f"network error: {exc}"
+        else:
+            if 200 <= response.status < 300:
+                try:
+                    return json.loads(response.body)
+                except json.JSONDecodeError as exc:
+                    raise ConnectorError(f"{what} returned invalid JSON") from exc
+            last = f"HTTP {response.status}: {response.body[:300]}"
+            if response.status not in _RETRYABLE:
+                break
+        if attempt < max_retries:
+            sleep(min(10.0, 0.5 * 2**attempt) + random.uniform(0, 0.25))
+    raise ConnectorError(f"{what} failed: {last}")
+
+
+_MISSING = object()
+
+
+def get_path(data: Any, path: str, default: Any = _MISSING) -> Any:
+    """Follow a dotted path such as ``data.items`` or ``results.0.hits``.
+
+    Integer segments index into lists. An empty path returns ``data``. Raises
+    :class:`KeyError` when the path does not exist and no default is given.
+    """
+    current = data
+    for part in [p for p in path.split(".") if p] if path else []:
+        if isinstance(current, Mapping) and part in current:
+            current = current[part]
+        elif (
+            isinstance(current, list)
+            and part.lstrip("-").isdigit()
+            and -len(current) <= int(part) < len(current)
+        ):
+            current = current[int(part)]
+        else:
+            if default is _MISSING:
+                raise KeyError(path)
+            return default
+    return current
 
 
 def fill_template(template: Any, values: Mapping[str, Any]) -> Any:

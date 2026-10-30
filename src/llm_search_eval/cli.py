@@ -370,17 +370,29 @@ def build_parser() -> argparse.ArgumentParser:
     fetch = sub.add_parser("fetch", help="query a live search backend and save the results")
     fetch.add_argument("--queries", "-q", required=True, help="queries file")
     fetch.add_argument(
-        "--backend", required=True, choices=["elasticsearch", "opensearch", "algolia"]
+        "--backend",
+        required=True,
+        choices=["elasticsearch", "opensearch", "algolia", "meilisearch", "typesense", "http"],
     )
-    fetch.add_argument("--index", required=True, help="index name")
+    fetch.add_argument(
+        "--index", help="index name (collection for Typesense); not used by the http backend"
+    )
     fetch.add_argument("--output", "-o", required=True, help="run file to write (.jsonl or .trec)")
     fetch.add_argument("--name", help="system name stored in TREC output (default: backend)")
     fetch.add_argument("-k", type=int, default=10, help="results per query (default: 10)")
     fetch.add_argument("--concurrency", type=int, default=4)
     fetch.add_argument("--timeout", type=float, default=30.0)
     fetch.add_argument("--id-field", help="document field holding the product id")
+    fetch.add_argument(
+        "--url",
+        help="server URL, e.g. http://localhost:9200; for the http backend the full "
+        "request URL with {{query}} and {{k}} placeholders",
+    )
+    fetch.add_argument(
+        "--params",
+        help="JSON object of extra search parameters (Algolia, Meilisearch, Typesense)",
+    )
     es = fetch.add_argument_group("Elasticsearch and OpenSearch")
-    es.add_argument("--url", help="cluster URL, e.g. http://localhost:9200")
     es.add_argument(
         "--fields",
         help="comma separated fields for the default multi_match query "
@@ -393,7 +405,31 @@ def build_parser() -> argparse.ArgumentParser:
     es.add_argument("--username", help="basic auth user; password from *_PASSWORD")
     al = fetch.add_argument_group("Algolia")
     al.add_argument("--app-id", help="application id (default: $ALGOLIA_APP_ID)")
-    al.add_argument("--params", help="JSON object of extra search parameters")
+    ts = fetch.add_argument_group("Typesense")
+    ts.add_argument(
+        "--query-by", help="comma separated fields to search (default: title,description)"
+    )
+    hj = fetch.add_argument_group("generic HTTP/JSON")
+    hj.add_argument("--method", default="GET", choices=["GET", "POST", "PUT"])
+    hj.add_argument(
+        "--body",
+        help="JSON file with the request body; {{query}}, {{k}} and {{lang}} are filled in",
+    )
+    hj.add_argument(
+        "--header",
+        action="append",
+        default=[],
+        metavar="NAME:VALUE",
+        help="request header; ${ENV_VAR} in the value is expanded; repeatable",
+    )
+    hj.add_argument(
+        "--results-path",
+        default="results",
+        help="dotted path to the result list (default: results)",
+    )
+    hj.add_argument(
+        "--id-path", default="id", help="dotted path to the id inside one result (default: id)"
+    )
     return parser
 
 
@@ -773,14 +809,54 @@ def cmd_fetch(args: argparse.Namespace) -> int:
     from llm_search_eval.connectors import (
         AlgoliaConnector,
         ElasticsearchConnector,
+        HTTPJSONConnector,
+        MeilisearchConnector,
         OpenSearchConnector,
+        TypesenseConnector,
         fetch_run,
     )
     from llm_search_eval.connectors.base import SearchConnector
 
+    if args.backend != "http" and not args.index:
+        raise ConfigError(f"--index is required for the {args.backend} backend")
     queries = load_queries(args.queries)
     connector: SearchConnector
-    if args.backend == "algolia":
+    if args.backend == "http":
+        if not args.url:
+            raise ConfigError("--url is required for the http backend")
+        headers = {}
+        for item in args.header:
+            key, sep, value = item.partition(":")
+            if not sep or not key.strip():
+                raise ConfigError(f"invalid --header {item!r}; expected NAME:VALUE")
+            headers[key.strip()] = value.strip()
+        connector = HTTPJSONConnector(
+            args.url,
+            method=args.method,
+            body=_json_arg(args.body, "--body", from_file=True),
+            headers=headers,
+            results_path=args.results_path,
+            id_path=args.id_path,
+            timeout=args.timeout,
+        )
+    elif args.backend == "meilisearch":
+        connector = MeilisearchConnector(
+            args.url,
+            args.index,
+            params=_json_arg(args.params, "--params", from_file=False),
+            id_field=args.id_field or "id",
+            timeout=args.timeout,
+        )
+    elif args.backend == "typesense":
+        connector = TypesenseConnector(
+            args.url,
+            args.index,
+            query_by=args.query_by or "title,description",
+            params=_json_arg(args.params, "--params", from_file=False),
+            id_field=args.id_field or "id",
+            timeout=args.timeout,
+        )
+    elif args.backend == "algolia":
         connector = AlgoliaConnector(
             args.app_id,
             args.index,
@@ -789,6 +865,8 @@ def cmd_fetch(args: argparse.Namespace) -> int:
             timeout=args.timeout,
         )
     else:
+        if not args.url:
+            raise ConfigError(f"--url is required for the {args.backend} backend")
         cls = ElasticsearchConnector if args.backend == "elasticsearch" else OpenSearchConnector
         options: dict[str, Any] = {}
         if args.fields:
