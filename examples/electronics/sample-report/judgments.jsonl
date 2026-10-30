@@ -1,19 +1,49 @@
 {"query_id": "q01", "product_id": "p02", "relevance": 0, "reason": "matched 0/4 query terms: none", "source": "judge"}
+{"query_id": "q01", "product_id": "p05", "relevance": 0, "reason": "matched 0/4 query terms: none", "source": "judge", "gold": 1}
+{"query_id": "q01", "product_id": "p06", "relevance": 3, "reason": "matched 4/4 query terms: cancelling, headphones, noise, wireless", "source": "judge", "gold": 3}
+{"query_id": "q01", "product_id": "p07", "relevance": 0, "reason": "matched 0/4 query terms: none", "source": "judge", "gold": 1}
 {"query_id": "q01", "product_id": "p14", "relevance": 1, "reason": "matched 1/4 query terms: wireless", "source": "judge"}
+{"query_id": "q01", "product_id": "p16", "relevance": 0, "reason": "matched 0/4 query terms: none", "source": "judge", "gold": 3}
 {"query_id": "q02", "product_id": "p01", "relevance": 1, "reason": "matched 1/4 query terms: 128gb", "source": "judge"}
+{"query_id": "q02", "product_id": "p02", "relevance": 2, "reason": "matched 2/4 query terms: galaxy, samsung", "source": "judge", "gold": 1}
+{"query_id": "q02", "product_id": "p03", "relevance": 2, "reason": "matched 3/4 query terms: 128gb, galaxy, samsung", "source": "judge", "gold": 3}
 {"query_id": "q02", "product_id": "p04", "relevance": 0, "reason": "matched 0/4 query terms: none", "source": "judge"}
 {"query_id": "q02", "product_id": "p07", "relevance": 2, "reason": "matched 2/4 query terms: galaxy, samsung", "source": "judge"}
+{"query_id": "q02", "product_id": "p15", "relevance": 0, "reason": "matched 0/4 query terms: none", "source": "judge", "gold": 3}
 {"query_id": "q03", "product_id": "p01", "relevance": 0, "reason": "matched 0/5 query terms: none", "source": "judge"}
 {"query_id": "q03", "product_id": "p04", "relevance": 0, "reason": "matched 0/5 query terms: none", "source": "judge"}
+{"query_id": "q03", "product_id": "p08", "relevance": 2, "reason": "matched 4/5 query terms: 65w, c, charger, usb", "source": "judge", "gold": 3}
+{"query_id": "q03", "product_id": "p09", "relevance": 1, "reason": "matched 2/5 query terms: c, usb", "source": "judge", "gold": 1}
 {"query_id": "q03", "product_id": "p14", "relevance": 0, "reason": "matched 0/5 query terms: none", "source": "judge"}
+{"query_id": "q03", "product_id": "p17", "relevance": 1, "reason": "matched 2/5 query terms: c, usb", "source": "judge", "gold": 3}
+{"query_id": "q04", "product_id": "p11", "relevance": 1, "reason": "matched 1/3 query terms: laptop", "source": "judge", "gold": 0}
+{"query_id": "q04", "product_id": "p12", "relevance": 3, "reason": "matched 3/3 query terms: gaming, laptop, rtx", "source": "judge", "gold": 3}
 {"query_id": "q04", "product_id": "p13", "relevance": 0, "reason": "matched 0/3 query terms: none", "source": "judge"}
+{"query_id": "q04", "product_id": "p18", "relevance": 1, "reason": "matched 1/3 query terms: rtx", "source": "judge", "gold": 3}
 {"query_id": "q05", "product_id": "p06", "relevance": 2, "reason": "matched 1/2 query terms: wireless", "source": "judge"}
 {"query_id": "q05", "product_id": "p07", "relevance": 0, "reason": "matched 0/2 query terms: none", "source": "judge"}
+{"query_id": "q05", "product_id": "p14", "relevance": 3, "reason": "matched 2/2 query terms: mouse, wireless", "source": "judge", "gold": 3}
+{"query_id": "q05", "product_id": "p20", "relevance": 0, "reason": "matched 0/2 query terms: none", "source": "judge", "gold": 3}
+{"query_id": "q06", "product_id": "p05", "relevance": 0, "reason": "matched 0/5 query terms: none", "source": "judge", "gold": 1}
+{"query_id": "q06", "product_id": "p06", "relevance": 0, "reason": "matched 0/5 query terms: none", "source": "judge", "gold": 3}
 {"query_id": "q06", "product_id": "p07", "relevance": 0, "reason": "matched 0/5 query terms: none", "source": "judge"}
+{"query_id": "q06", "product_id": "p16", "relevance": 3, "reason": "matched 5/5 query terms: بی, سیم, نویز, هدفون, کنسلینگ", "source": "judge", "gold": 3}
 {"query_id": "q06", "product_id": "p21", "relevance": 0, "reason": "matched 0/5 query terms: none", "source": "judge"}
+{"query_id": "q07", "product_id": "p02", "relevance": 0, "reason": "matched 0/4 query terms: none", "source": "judge", "gold": 1}
+{"query_id": "q07", "product_id": "p03", "relevance": 0, "reason": "matched 0/4 query terms: none", "source": "judge", "gold": 3}
 {"query_id": "q07", "product_id": "p04", "relevance": 0, "reason": "matched 0/4 query terms: none", "source": "judge"}
+{"query_id": "q07", "product_id": "p15", "relevance": 3, "reason": "matched 4/4 query terms: 128, سامسونگ, گوشی, گیگابایت", "source": "judge", "gold": 3}
 {"query_id": "q07", "product_id": "p21", "relevance": 0, "reason": "matched 0/4 query terms: none", "source": "judge"}
+{"query_id": "q08", "product_id": "p08", "relevance": 1, "reason": "matched 2/5 query terms: c, usb", "source": "judge", "gold": 3}
+{"query_id": "q08", "product_id": "p09", "relevance": 1, "reason": "matched 2/5 query terms: c, usb", "source": "judge", "gold": 1}
+{"query_id": "q08", "product_id": "p17", "relevance": 3, "reason": "matched 5/5 query terms: 65, c, usb, شارژر, وات", "source": "judge", "gold": 3}
 {"query_id": "q08", "product_id": "p21", "relevance": 0, "reason": "matched 0/5 query terms: none", "source": "judge"}
+{"query_id": "q09", "product_id": "p11", "relevance": 0, "reason": "matched 0/3 query terms: none", "source": "judge", "gold": 1}
+{"query_id": "q09", "product_id": "p12", "relevance": 0, "reason": "matched 0/3 query terms: none", "source": "judge", "gold": 3}
 {"query_id": "q09", "product_id": "p13", "relevance": 0, "reason": "matched 0/3 query terms: none", "source": "judge"}
+{"query_id": "q09", "product_id": "p18", "relevance": 3, "reason": "matched 3/3 query terms: تاپ, لپ, گیمینگ", "source": "judge", "gold": 3}
+{"query_id": "q10", "product_id": "p01", "relevance": 1, "reason": "matched 1/4 query terms: 15", "source": "judge", "gold": 0}
 {"query_id": "q10", "product_id": "p09", "relevance": 0, "reason": "matched 0/4 query terms: none", "source": "judge"}
+{"query_id": "q10", "product_id": "p10", "relevance": 1, "reason": "matched 1/4 query terms: 15", "source": "judge", "gold": 3}
+{"query_id": "q10", "product_id": "p19", "relevance": 3, "reason": "matched 4/4 query terms: 15, آیفون, قاب, گوشی", "source": "judge", "gold": 3}
 {"query_id": "q10", "product_id": "p21", "relevance": 0, "reason": "matched 0/4 query terms: none", "source": "judge"}

@@ -3,7 +3,7 @@
 - **Queries:** 10 (en: 5, fa: 5)
 - **Products:** 22
 - **Gold labels:** 30
-- **Judge:** mock:desc=0
+- **Judge:** mock
 - **Depth:** top 10, relevant when grade >= 2, exponential gain
 - **Primary metric:** `ndcg@10`, baseline `bm25`
 
@@ -59,7 +59,19 @@ p-values come from a two-sided paired randomization test over per-query `ndcg@10
 | `semantic` | 10/10 | 100.0% | 0 |
 | `hybrid` | 10/10 | 100.0% | 0 |
 
-Gold labels used: 30, new judgments: 19, from cache: 0, failed: 0, still unlabeled: 0.
+Gold labels used: 30, new judgments: 49, from cache: 0, failed: 0, still unlabeled: 0.
+
+## Judges
+
+Judge `mock` labeled 49 pair(s). Grade distribution: 3: 8, 2: 5, 1: 10, 0: 26.
+
+### Agreement with gold labels
+
+| Rater | n | Exact | Within one | Binary | Weighted kappa | Mean bias |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `mock` | 30 | 33.3% | 66.7% | 63.3% | 0.257 | -1.000 |
+
+Binary agreement treats grades >= 2 as relevant. Weighted kappa uses quadratic weights. A positive bias means the judge grades more leniently than the gold labels.
 
 ---
-Produced by llm-search-eval 0.1.0 at 2026-10-30T15:43:15+00:00.
+Produced by llm-search-eval 0.2.0 at 2026-10-30T16:36:22+00:00.

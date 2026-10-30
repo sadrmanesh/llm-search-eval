@@ -1,11 +1,11 @@
 # llm-search-eval
 
 [![CI](https://github.com/sadrmanesh/llm-search-eval/actions/workflows/ci.yml/badge.svg)](https://github.com/sadrmanesh/llm-search-eval/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)
+![Python](https://img.shields.io/badge/python-3.10%20to%203.13-blue)
 ![Dependencies](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**Measure product search and recommendation quality with classic IR metrics and LLM relevance judges, then compare systems with statistical rigor.**
+**Measure product search quality with classic IR metrics and panels of LLM relevance judges, compare systems with statistical rigor, and block ranking regressions in CI.**
 
 Built for e-commerce teams who ship ranking changes (BM25 to vectors, hybrid retrieval, rerankers, query rewriting) and need a trustworthy answer to one question: *is the new system actually better for shoppers?* First-class support for **Persian and English** queries.
 
@@ -19,10 +19,15 @@ Built for e-commerce teams who ship ranking changes (BM25 to vectors, hybrid ret
 - [Quick start](#quick-start)
 - [Data formats](#data-formats)
 - [Relevance judges](#relevance-judges)
+- [Judge panels and agreement](#judge-panels-and-agreement)
+- [Cost tracking and budgets](#cost-tracking-and-budgets)
 - [Metrics](#metrics)
-- [Reports](#reports)
+- [Reports and dashboard](#reports-and-dashboard)
+- [Quality gates and the GitHub Action](#quality-gates-and-the-github-action)
+- [Live search connectors](#live-search-connectors)
 - [Python API](#python-api)
 - [Persian support](#persian-support)
+- [Documentation](#documentation)
 - [Roadmap](#roadmap)
 - [خلاصه فارسی](#خلاصه-فارسی)
 
@@ -32,27 +37,40 @@ Offline search evaluation usually breaks down in the same places:
 
 - **Labels run out.** A gold set labelled last quarter does not cover the products a new retriever surfaces today, so unlabeled results silently count as misses and the new system looks worse than it is.
 - **Averages hide noise.** A +2% nDCG gain on 50 queries can easily be chance.
+- **One model is one opinion.** A single LLM judge has its own biases, and nobody checks how well it agrees with the humans who wrote the gold labels.
+- **Costs creep.** Judging thousands of pairs with a frontier model adds up, and nobody notices until the invoice.
 - **Multilingual catalogs are messy.** Persian text mixes Arabic and Persian code points, digit systems, and zero width joiners, which breaks naive matching.
 
-`llm-search-eval` merges your gold labels with LLM judgments for the gaps, scores every system on the same label pool, reports per-language breakdowns, and attaches a paired significance test to every comparison.
+`llm-search-eval` merges your gold labels with LLM judgments for the gaps, can ask several judges and measure how much they agree with each other and with your gold labels, tracks every token against a budget, scores every system on the same label pool, attaches a paired significance test to every comparison, and turns the result into a dashboard and a pass or fail check for pull requests.
 
 ## Features
 
 - **Classic IR metrics:** nDCG@k (exponential or linear gain), precision@k, recall@k, MRR, MAP, with configurable relevance threshold and evaluation depth.
 - **LLM-as-judge:** graded 0 to 3 relevance labels from any OpenAI-compatible endpoint (OpenAI, OpenRouter, vLLM, Ollama, LM Studio, internal gateways), with retries, backoff, and robust JSON parsing.
-- **Pluggable judges:** register your own grader with a decorator or load it by `module:Class` path.
-- **Deterministic mock judge** for CI, tests, and offline dry runs.
-- **Judgment cache:** content-addressed JSONL cache; re-runs never pay for the same judgment twice, and edited products are re-judged automatically.
+- **Judge panels:** combine several judges by majority, mean, median, min, or max, and tolerate individual failures.
+- **Agreement statistics:** Cohen's kappa (plain and weighted), Fleiss' kappa, and Krippendorff's alpha between judges, plus calibration of every judge against your gold labels.
+- **Cost tracking:** token usage per model, user-supplied prices, and budgets on cost, tokens, or judgments, with a `cost.json` report.
 - **System comparison:** deltas for every metric, win/tie/loss counts, and a paired randomization test against a baseline.
+- **Interactive dashboard:** one self-contained HTML file with charts, system comparison, and per-query drilldown. No server, no CDN.
+- **Quality gates:** `llm-search-eval gate` and a reusable GitHub Action fail the build when a metric drops below a floor or regresses.
+- **Live connectors:** fetch runs straight from Elasticsearch, OpenSearch, or Algolia.
+- **Pluggable judges** by decorator or `module:Class`, a **deterministic mock judge** for CI, and a **content-addressed judgment cache** so re-runs never pay twice.
 - **Flexible inputs:** JSONL, JSON, CSV, TSV, and TREC run/qrels files, with common field aliases.
-- **Reports:** Markdown for pull requests and wikis, JSON for dashboards, and a `judgments.jsonl` audit trail.
-- **Zero runtime dependencies**, Python 3.10+, fully typed.
+- **Zero runtime dependencies**, Python 3.10 to 3.13, fully typed.
 
 ## Installation
 
 ```bash
-pip install "git+https://github.com/sadrmanesh/llm-search-eval@v0.1.0"
+pip install llm-search-eval
 ```
+
+or straight from a release tag:
+
+```bash
+pip install "git+https://github.com/sadrmanesh/llm-search-eval@v0.2.0"
+```
+
+Optional extras let the connectors reuse official clients: `llm-search-eval[elasticsearch]`, `[opensearch]`, and `[algolia]`. They are not needed for the default HTTP mode.
 
 From source, for development:
 
@@ -87,13 +105,14 @@ llm-search-eval run \
 | `hybrid` | 0.9767 | 0.9767 | **0.4200** | **0.9667** | **1.0000** | 0.9583 |
 ```
 
-The full report, including significance tests and the per-language breakdown, is in [`examples/electronics/sample-report/report.md`](examples/electronics/sample-report/report.md).
+The output directory holds `report.md`, `report.json`, the `report.html` dashboard, `cost.json`, and `judgments.jsonl`. See the [sample report](examples/electronics/sample-report/report.md) and the [sample dashboard](examples/electronics/sample-report/report.html).
 
-Switch to a real LLM judge by changing one flag:
+Switch to a real LLM judge, with a price and a budget:
 
 ```bash
 export OPENAI_API_KEY=...
-llm-search-eval run ... --judge openai --model gpt-4o-mini --cache .judge-cache.jsonl
+llm-search-eval run ... --judge openai=gpt-4o-mini --cache .judge-cache.jsonl \
+  --price gpt-4o-mini=0.15,0.60 --max-cost 2
 ```
 
 Check inputs before spending tokens:
@@ -145,16 +164,16 @@ For every (query, product) pair in each system's top `depth` results, labels are
 
 All systems are scored against the same merged label pool, so the ideal ranking used by nDCG and the recall denominator are identical for every system.
 
-| Judge | Use it for |
+| Judge spec | Use it for |
 | :--- | :--- |
-| `mock` | Tests, CI, and offline dry runs. Deterministic term coverage over title, brand, category, and attributes. Not a quality signal. |
-| `openai` | Any OpenAI-compatible chat completions API. Configure with `--model`, `--base-url` (or `OPENAI_BASE_URL`), and `--api-key-env` (default `OPENAI_API_KEY`). Local servers on `localhost` need no key. |
+| `mock` | Tests, CI, and offline dry runs. Deterministic term coverage over title, brand, category, and attributes. Not a quality signal. `mock=noise=0.2,seed=1` adds reproducible disagreement for trying panels. |
+| `openai` or `openai=MODEL` | Any OpenAI-compatible chat completions API. Configure with `--model`, `--base-url` (or `OPENAI_BASE_URL`), and `--api-key-env` (default `OPENAI_API_KEY`), or per judge: `openai=MODEL,base_url=URL,api_key_env=VAR`. Local servers on `localhost` need no key. |
 | `module:Class` | Your own judge. |
 
 Running against a local model with Ollama:
 
 ```bash
-llm-search-eval run ... --judge openai --base-url http://localhost:11434/v1 --model qwen2.5:14b
+llm-search-eval run ... --judge "openai=qwen2.5:14b,base_url=http://localhost:11434/v1"
 ```
 
 Writing a custom judge:
@@ -183,6 +202,30 @@ class ClickModelJudge(Judge):
 llm-search-eval run ... --judge my_package.judges:ClickModelJudge
 ```
 
+## Judge panels and agreement
+
+Repeat `--judge` to form a panel. Every member grades every pair and the panel combines the grades:
+
+```bash
+llm-search-eval run ... \
+  --judge openai=gpt-4o-mini \
+  --judge openai=gpt-4o \
+  --judge "openai=qwen2.5:14b,base_url=http://localhost:11434/v1" \
+  --aggregate majority --calibrate --calibration-sample 200
+```
+
+- `--aggregate` is `majority` (default), `mean`, `median`, `min`, or `max`. `--min-votes` sets how many members must answer; the default is a strict majority.
+- The report shows the unanimous share, **Fleiss' kappa**, **Krippendorff's alpha** (nominal, ordinal, interval), and pairwise **Cohen's kappa** (plain and quadratic-weighted).
+- `--calibrate` also sends gold-labeled pairs to the judges and reports exact, within-one, and binary agreement, kappa, and bias against the gold labels, for the panel and for each member. Gold labels still decide the scores.
+
+Details: [docs/judges.md](docs/judges.md).
+
+## Cost tracking and budgets
+
+Every judge request records its token usage. Prices are never guessed: pass them per model in USD per million tokens with `--price MODEL=INPUT,OUTPUT` or `--price-file prices.json`. A price for `gpt-4o-mini` also covers dated snapshots such as `gpt-4o-mini-2024-07-18`, and models without a price show the cost as unknown rather than zero.
+
+`--max-cost`, `--max-tokens`, and `--max-judgments` stop new requests once a limit is reached; remaining pairs stay unlabeled and the report says how many were skipped. Cache hits are free. Details: [docs/cost.md](docs/cost.md).
+
 ## Metrics
 
 | Metric | Spec | Definition |
@@ -202,17 +245,64 @@ llm-search-eval run ... --judge my_package.judges:ClickModelJudge
 
 Each system is compared to the baseline (first system, or `--baseline`) with a two-sided paired randomization (sign flip) test on per-query values of the primary metric. It makes no normality assumption and is the standard choice in IR evaluation. Use `--permutations` and `--seed` to trade precision for speed and to keep results reproducible.
 
-## Reports
+## Reports and dashboard
 
 `--output-dir` receives:
 
 | File | Contents |
 | :--- | :--- |
-| `report.md` | Summary table with best values in bold, comparison with p-values and win/tie/loss, all metric deltas, primary metric by query language, and label coverage. |
-| `report.json` | Everything above plus per-query metric values and the full configuration, for dashboards and regression gates. |
-| `judgments.jsonl` | Every judge label with its reason and source (`judge` or `cache`), for auditing and for promoting to gold labels. |
+| `report.md` | Summary table with best values in bold, comparison with p-values and win/tie/loss, all metric deltas, primary metric by query language, label coverage, judges and agreement, and cost. |
+| `report.json` | Everything above plus per-query metric values, rankings, labels, and the full configuration. |
+| `report.html` | Interactive dashboard in one self-contained file: metric charts, system comparison with per-query deltas, judge agreement, cost, and a searchable per-query drilldown that shows every system's ranking side by side. |
+| `cost.json` | Token usage, cost per model, and budget state. |
+| `judgments.jsonl` | Every judge label with its reason, source, panel votes, and gold label for calibration pairs. |
 
-The command exits with code `0` on success, `2` for invalid input or configuration, and `3` when some judgments failed.
+`--format` selects any of `md`, `json`, and `html` (all by default). `llm-search-eval report report.json` re-renders the Markdown or HTML from a saved JSON report. Details: [docs/reports.md](docs/reports.md).
+
+The `run` command exits with code `0` on success, `2` for invalid input or configuration, and `3` when some judgments failed.
+
+## Quality gates and the GitHub Action
+
+`llm-search-eval gate` turns a report into a pass or fail check:
+
+```bash
+llm-search-eval gate reports/report.json --min ndcg@10=0.6 --max-drop 0.01 --significant-only
+```
+
+It checks metric floors and drops against the baseline system or against a `--reference` report from the default branch, optionally only when the drop is statistically significant, prints a Markdown table, and exits with `1` on failure.
+
+The repository is also a reusable GitHub Action that runs the evaluation, applies the gate, and posts the result to the job summary:
+
+```yaml
+- uses: sadrmanesh/llm-search-eval@v0.2.0
+  env:
+    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  with:
+    queries: eval/queries.jsonl
+    products: eval/products.jsonl
+    qrels: eval/qrels.csv
+    systems: |
+      production=eval/runs/production.jsonl
+      candidate=eval/runs/candidate.jsonl
+    judges: openai=gpt-4o-mini
+    max-cost: "2"
+    min: ndcg@10=0.55
+    max-drop: "0.01"
+```
+
+All inputs and outputs: [docs/ci.md](docs/ci.md).
+
+## Live search connectors
+
+Evaluate the index you actually serve. `fetch` runs every query against the backend and writes a run file:
+
+```bash
+llm-search-eval fetch --backend elasticsearch --url http://localhost:9200 --index products \
+  --queries eval/queries.jsonl -k 20 -o runs/es.jsonl
+llm-search-eval fetch --backend algolia --index products --queries eval/queries.jsonl -o runs/algolia.jsonl
+```
+
+Elasticsearch and OpenSearch accept a JSON request template with `{{query}}`, `{{k}}`, and `{{lang}}` placeholders, so you can evaluate your production query as is. Details: [docs/connectors.md](docs/connectors.md).
 
 ## Python API
 
@@ -237,6 +327,31 @@ print(report.mean("hybrid", "ndcg@10"))
 print(render_markdown(report))
 ```
 
+Judge panels, cost tracking, the dashboard, and gates have Python entry points too:
+
+```python
+from llm_search_eval import (
+    Budget,
+    CostTracker,
+    JudgePanel,
+    PriceTable,
+    check_report,
+    render_html,
+)
+
+panel = JudgePanel([create_judge("openai", model="gpt-4o-mini"), create_judge("mock")])
+tracker = CostTracker(
+    prices=PriceTable.parse_specs(["gpt-4o-mini=0.15,0.60"]),
+    budget=Budget(max_cost_usd=2.0),
+)
+report = evaluate(dataset, runs, EvaluationConfig(calibrate=True), judge=panel, tracker=tracker)
+
+with open("report.html", "w", encoding="utf-8") as fh:
+    fh.write(render_html(report))
+gate = check_report(report.to_dict(), floors={"ndcg@10": 0.6}, max_drop=0.01)
+print(gate.passed)
+```
+
 ## Persian support
 
 - Arabic `ي` and `ك` are unified with Persian `ی` and `ک`; Persian and Arabic-Indic digits become ASCII digits.
@@ -244,16 +359,25 @@ print(render_markdown(report))
 - Query language is detected from the script when `lang` is missing, and reports break down the primary metric by language.
 - The LLM judge prompt states the query language and counts translations and transliterations between Persian and English as matches.
 
+## Documentation
+
+| Guide | Topic |
+| :--- | :--- |
+| [docs/judges.md](docs/judges.md) | Judge specs, panels, agreement, calibration |
+| [docs/cost.md](docs/cost.md) | Prices, budgets, `cost.json` |
+| [docs/reports.md](docs/reports.md) | Report files and the HTML dashboard |
+| [docs/ci.md](docs/ci.md) | The `gate` command and the GitHub Action |
+| [docs/connectors.md](docs/connectors.md) | Elasticsearch, OpenSearch, and Algolia |
+| [docs/releasing.md](docs/releasing.md) | Versioning and PyPI publishing |
+
 ## Roadmap
 
-Planned for upcoming releases:
+Ideas for upcoming releases:
 
-- Multiple judges per pair with agreement statistics (Cohen's kappa) and judge-versus-gold calibration.
-- Token and cost accounting with budget limits.
-- Interactive HTML dashboard.
-- GitHub Action for ranking regression gates in pull requests.
-- Connectors to run queries directly against Elasticsearch, OpenSearch, and Algolia.
-- PyPI release.
+- Pairwise (A versus B) LLM judging as an alternative to pointwise grades.
+- Bootstrap confidence intervals for every metric.
+- Sticky pull request comments from the GitHub Action.
+- More connectors, such as Typesense, Meilisearch, and Vespa.
 
 ## Contributing
 
@@ -264,6 +388,8 @@ Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for
 <div dir="rtl">
 
 **llm-search-eval** ابزاری متن باز برای سنجش کیفیت جستجو و پیشنهاد محصول در فروشگاه های اینترنتی است. این ابزار معیارهای کلاسیک بازیابی اطلاعات مانند nDCG و MRR و MAP را با داوری مدل های زبانی ترکیب می کند تا نتایجی که برچسب ندارند هم ارزیابی شوند. چند سیستم جستجو را کنار هم مقایسه می کند و برای هر مقایسه آزمون معناداری آماری ارائه می دهد. پرسش های فارسی و انگلیسی هر دو پشتیبانی می شوند و نویسه های عربی، ارقام فارسی و فاصله های مجازی به شکل یکسان نرمال سازی می شوند.
+
+در نسخه 0.2.0 چند داور مدل زبانی می توانند با هم رای بدهند و میزان توافق آن ها با شاخص های کاپای کوهن، کاپای فلایس و آلفای کریپندورف گزارش می شود. هزینه و توکن هر اجرا با سقف بودجه کنترل می شود. گزارش تعاملی HTML در یک فایل مستقل ساخته می شود. یک GitHub Action آماده هم هست که در صورت افت کیفیت جستجو، بررسی را ناموفق می کند. اتصال مستقیم به Elasticsearch و OpenSearch و Algolia هم اضافه شده است.
 
 </div>
 
