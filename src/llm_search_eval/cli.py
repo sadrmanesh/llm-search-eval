@@ -1,25 +1,52 @@
-"""Command line interface: ``llm-search-eval run`` and ``llm-search-eval validate``."""
+"""Command line interface for ``llm-search-eval``.
+
+Commands: ``run`` (evaluate), ``validate`` (check inputs), ``report`` (re-render
+a saved report), ``gate`` (fail CI on regressions) and ``fetch`` (collect a run
+from a live search backend).
+"""
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from llm_search_eval import __version__
-from llm_search_eval.errors import LLMSearchEvalError
+from llm_search_eval.errors import ConfigError, LLMSearchEvalError
 from llm_search_eval.evaluate import EvaluationConfig, evaluate
-from llm_search_eval.io import load_dataset, load_run
+from llm_search_eval.gate import check_report, load_report
+from llm_search_eval.html_report import write_html
+from llm_search_eval.io import load_dataset, load_queries, load_run, write_json, write_run
 from llm_search_eval.judges import JudgmentCache, available_judges, create_judge
+from llm_search_eval.judges.base import Judge
+from llm_search_eval.judges.panel import AGGREGATIONS, JudgePanel
 from llm_search_eval.metrics import DEFAULT_METRICS
 from llm_search_eval.models import Run
 from llm_search_eval.report import render_markdown, summary_table, write_reports
+from llm_search_eval.usage import Budget, CostTracker, PriceTable
 
 EXIT_OK = 0
+EXIT_GATE_FAILED = 1
 EXIT_USAGE = 2
 EXIT_JUDGE_FAILURES = 3
+
+REPORT_FORMATS = ("md", "json", "html")
+
+
+def _option_value(value: str) -> Any:
+    lowered = value.strip().lower()
+    if lowered in {"true", "false"}:
+        return lowered == "true"
+    for kind in (int, float):
+        try:
+            return kind(value)
+        except ValueError:
+            pass
+    return value.strip()
 
 
 def _system_arg(value: str) -> tuple[str, str]:
@@ -50,6 +77,16 @@ def _add_dataset_args(p: argparse.ArgumentParser) -> None:
     )
 
 
+def _metric_floor(value: str) -> tuple[str, float]:
+    metric, sep, number = value.partition("=")
+    try:
+        if not sep or not metric:
+            raise ValueError
+        return metric.strip(), float(number)
+    except ValueError:
+        raise argparse.ArgumentTypeError("expected METRIC=VALUE, for example ndcg@10=0.6") from None
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="llm-search-eval",
@@ -61,20 +98,51 @@ def build_parser() -> argparse.ArgumentParser:
 
     run = sub.add_parser("run", help="score and compare one or more search systems")
     _add_dataset_args(run)
-    j = run.add_argument_group("judge")
+    j = run.add_argument_group("judges")
     j.add_argument(
         "--judge",
-        default="none",
-        help=f"relevance judge for unlabeled results: none, {', '.join(available_judges())}, "
-        "or module:Class (default: none)",
+        dest="judges",
+        action="append",
+        default=[],
+        metavar="SPEC",
+        help=f"relevance judge for unlabeled results: {', '.join(available_judges())}, "
+        "openai=MODEL[,base_url=URL,api_key_env=VAR,timeout=S], mock[=noise=P,seed=N], "
+        "or module:Class[=KEY=VALUE,...]. "
+        "Repeat to form a panel of judges (default: no judge)",
     )
-    j.add_argument("--model", help="model name for LLM judges")
+    j.add_argument(
+        "--aggregate",
+        choices=AGGREGATIONS,
+        default="majority",
+        help="how a panel combines grades (default: %(default)s)",
+    )
+    j.add_argument("--min-votes", type=int, help="votes a panel needs per pair (default: majority)")
+    j.add_argument("--model", help="default model for LLM judges")
     j.add_argument("--base-url", help="OpenAI-compatible API base URL (default: $OPENAI_BASE_URL)")
     j.add_argument("--api-key-env", help="environment variable holding the API key")
     j.add_argument("--timeout", type=float, help="per-request timeout in seconds")
     j.add_argument("--no-json-mode", action="store_true", help="do not request JSON responses")
     j.add_argument("--cache", help="JSONL cache of judgments, reused across runs")
     j.add_argument("--concurrency", type=int, default=4, help="parallel judge requests")
+    j.add_argument(
+        "--calibrate",
+        action="store_true",
+        help="also judge pairs that have gold labels and report judge vs gold agreement",
+    )
+    j.add_argument("--calibration-sample", type=int, metavar="N", help="judge at most N gold pairs")
+
+    c = run.add_argument_group("cost and budget")
+    c.add_argument(
+        "--price",
+        action="append",
+        default=[],
+        metavar="MODEL=IN,OUT",
+        help="USD per million input and output tokens for a model; repeatable",
+    )
+    c.add_argument("--price-file", help="JSON file mapping model names to prices")
+    c.add_argument("--max-cost", type=float, metavar="USD", help="stop judging at this cost")
+    c.add_argument("--max-tokens", type=int, help="stop judging after this many tokens")
+    c.add_argument("--max-judgments", type=int, help="stop after this many fresh judgments")
 
     m = run.add_argument_group("metrics")
     m.add_argument(
@@ -92,12 +160,95 @@ def build_parser() -> argparse.ArgumentParser:
 
     o = run.add_argument_group("output")
     o.add_argument("--output-dir", "-o", default="reports", help="report directory")
-    o.add_argument("--format", default="md,json", help="report formats: md, json (default: both)")
+    o.add_argument(
+        "--format",
+        default="md,json,html",
+        help="comma separated report formats: md, json, html (default: %(default)s)",
+    )
     o.add_argument("--title", default="Search evaluation report")
     o.add_argument("--quiet", action="store_true", help="do not print the summary table")
 
     validate = sub.add_parser("validate", help="check dataset and run files for problems")
     _add_dataset_args(validate)
+
+    report = sub.add_parser("report", help="render a saved report.json as Markdown or HTML")
+    report.add_argument("report", help="path to report.json")
+    report.add_argument("--output-dir", "-o", help="directory (default: next to report.json)")
+    report.add_argument("--format", default="html", help="md, html, or both (default: html)")
+
+    gate = sub.add_parser(
+        "gate",
+        help="check a report against quality thresholds; exit code 1 on failure",
+        description="Fail when metrics fall below a floor or regress against the baseline "
+        "system or a reference report. Prints a Markdown summary.",
+    )
+    gate.add_argument("report", help="path to report.json")
+    gate.add_argument("--reference", help="earlier report.json to compare the same systems with")
+    gate.add_argument(
+        "--metric",
+        dest="metrics",
+        action="append",
+        default=[],
+        help="metric for regression checks; repeatable (default: the primary metric)",
+    )
+    gate.add_argument("--max-drop", type=float, help="largest allowed absolute drop")
+    gate.add_argument(
+        "--max-relative-drop", type=float, help="largest allowed relative drop, e.g. 0.05 for 5%%"
+    )
+    gate.add_argument(
+        "--min",
+        dest="floors",
+        action="append",
+        default=[],
+        type=_metric_floor,
+        metavar="METRIC=VALUE",
+        help="minimum mean value for a metric; repeatable",
+    )
+    gate.add_argument(
+        "--system",
+        dest="systems",
+        action="append",
+        default=[],
+        help="only check these systems; repeatable (default: all)",
+    )
+    gate.add_argument(
+        "--significant-only",
+        action="store_true",
+        help="fail on a drop only when the paired randomization test finds it significant",
+    )
+    gate.add_argument("--alpha", type=float, default=0.05, help="significance level")
+    gate.add_argument("--permutations", type=int, default=10_000)
+    gate.add_argument("--seed", type=int, default=13)
+    gate.add_argument("--summary", help="append the Markdown summary to this file")
+    gate.add_argument("--json", dest="json_out", help="write the check results as JSON")
+
+    fetch = sub.add_parser("fetch", help="query a live search backend and save the results")
+    fetch.add_argument("--queries", "-q", required=True, help="queries file")
+    fetch.add_argument(
+        "--backend", required=True, choices=["elasticsearch", "opensearch", "algolia"]
+    )
+    fetch.add_argument("--index", required=True, help="index name")
+    fetch.add_argument("--output", "-o", required=True, help="run file to write (.jsonl or .trec)")
+    fetch.add_argument("--name", help="system name stored in TREC output (default: backend)")
+    fetch.add_argument("-k", type=int, default=10, help="results per query (default: 10)")
+    fetch.add_argument("--concurrency", type=int, default=4)
+    fetch.add_argument("--timeout", type=float, default=30.0)
+    fetch.add_argument("--id-field", help="document field holding the product id")
+    es = fetch.add_argument_group("Elasticsearch and OpenSearch")
+    es.add_argument("--url", help="cluster URL, e.g. http://localhost:9200")
+    es.add_argument(
+        "--fields",
+        help="comma separated fields for the default multi_match query "
+        "(default: title^3,brand^2,category,description)",
+    )
+    es.add_argument(
+        "--template",
+        help="JSON file with the request body; {{query}}, {{k}} and {{lang}} are filled in",
+    )
+    es.add_argument("--username", help="basic auth user; password from *_PASSWORD")
+    al = fetch.add_argument_group("Algolia")
+    al.add_argument("--app-id", help="application id (default: $ALGOLIA_APP_ID)")
+    al.add_argument("--params", help="JSON object of extra search parameters")
     return parser
 
 
@@ -110,28 +261,76 @@ def _progress(done: int, total: int) -> None:
         print(f"\rjudging {done}/{total}", end="\n" if done == total else "", file=sys.stderr)
 
 
+def _parse_formats(value: str, allowed: Sequence[str] = REPORT_FORMATS) -> list[str]:
+    formats = [f.strip().lower() for f in value.split(",") if f.strip()]
+    unknown = set(formats) - set(allowed)
+    if unknown or not formats:
+        raise ConfigError(
+            f"unknown report format(s): {', '.join(sorted(unknown)) or value!r}; "
+            f"choose from {', '.join(allowed)}"
+        )
+    return formats
+
+
+def _judge_from_spec(spec: str, args: argparse.Namespace) -> Judge:
+    name, sep, rest = spec.partition("=")
+    name = name.strip()
+    options: dict[str, Any] = {}
+    if name == "openai" or ":" in name:
+        options = {
+            "model": args.model,
+            "base_url": args.base_url,
+            "api_key_env": args.api_key_env,
+            "timeout": args.timeout,
+            "json_mode": False if args.no_json_mode else None,
+        }
+    if sep:
+        for i, part in enumerate(p.strip() for p in rest.split(",")):
+            key, eq, value = part.partition("=")
+            key = key.strip()
+            if not eq and i == 0:
+                options["model"] = part
+            elif not eq or not key.isidentifier():
+                raise ConfigError(f"invalid judge option {part!r} in {spec!r}; use KEY=VALUE")
+            elif key == "model":
+                options[key] = value.strip()
+            else:
+                options[key] = _option_value(value)
+    return create_judge(name, **options)
+
+
+def _build_judge(args: argparse.Namespace) -> Judge | None:
+    specs = [s for s in args.judges if s.strip() and s.strip() != "none"]
+    if not specs:
+        return None
+    judges = [_judge_from_spec(spec, args) for spec in specs]
+    if len(judges) == 1:
+        return judges[0]
+    return JudgePanel(judges, aggregation=args.aggregate, min_votes=args.min_votes)
+
+
+def _build_tracker(args: argparse.Namespace) -> CostTracker:
+    prices = PriceTable.from_file(args.price_file) if args.price_file else PriceTable()
+    prices = PriceTable.parse_specs(args.price, base=prices)
+    budget = Budget(args.max_cost, args.max_tokens, args.max_judgments)
+    return CostTracker(prices=prices, budget=budget)
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     if not args.systems:
         raise LLMSearchEvalError("at least one --system NAME=PATH is required")
+    formats = _parse_formats(args.format)
     dataset = load_dataset(args.queries, args.products, args.qrels)
     runs = _load_runs(args.systems)
-    judge = None
-    if args.judge != "none":
-        options = {}
-        if args.judge == "openai" or ":" in args.judge:
-            options = {
-                "model": args.model,
-                "base_url": args.base_url,
-                "api_key_env": args.api_key_env,
-                "timeout": args.timeout,
-                "json_mode": False if args.no_json_mode else None,
-            }
-        judge = create_judge(args.judge, **options)
-    elif not dataset.qrels:
+    tracker = _build_tracker(args)
+    judge = _build_judge(args)
+    if judge is None and not dataset.qrels:
         print(
             "warning: no --qrels and no --judge: every result will count as not relevant",
             file=sys.stderr,
         )
+    if judge is None and args.calibrate:
+        raise ConfigError("--calibrate needs at least one --judge")
 
     config = EvaluationConfig(
         metrics=args.metrics,
@@ -144,6 +343,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         seed=args.seed,
         concurrency=args.concurrency,
         title=args.title,
+        calibrate=args.calibrate,
+        calibration_sample=args.calibration_sample,
     )
     try:
         report = evaluate(
@@ -153,22 +354,145 @@ def cmd_run(args: argparse.Namespace) -> int:
             judge=judge,
             cache=JudgmentCache(args.cache),
             progress=None if args.quiet else _progress,
+            tracker=tracker,
         )
     finally:
         if judge is not None:
             judge.close()
-    formats = [f.strip().lower() for f in args.format.split(",") if f.strip()]
-    unknown = set(formats) - {"md", "json"}
-    if unknown:
-        raise LLMSearchEvalError(f"unknown report format(s): {', '.join(sorted(unknown))}")
     written = write_reports(report, args.output_dir, formats)
+    data = report.to_dict()
     if not args.quiet:
-        print("\n".join(summary_table(report.to_dict())))
+        print("\n".join(summary_table(data)))
+        cost = data["cost"]
+        if judge is not None:
+            spent = "unknown" if cost["cost_usd"] is None else f"${cost['cost_usd']:.4f}"
+            print(
+                f"judge requests: {cost['requests']}, tokens: {cost['total_tokens']}, "
+                f"cost: {spent}, cache hits: {cost['cache_hits']}",
+                file=sys.stderr,
+            )
         for path in written:
             print(f"wrote {path}", file=sys.stderr)
-    failed = report.to_dict()["labels"]["failed"]
+    if data["cost"]["budget"]["exhausted"]:
+        print(
+            f"warning: budget {data['cost']['budget']['reason']}; "
+            f"{data['cost']['budget']['skipped_pairs']} pair(s) were not judged",
+            file=sys.stderr,
+        )
+    failed = data["labels"]["failed"]
     if failed:
         print(f"error: {failed} judgment(s) failed; see report.json for details", file=sys.stderr)
+        return EXIT_JUDGE_FAILURES
+    return EXIT_OK
+
+
+def cmd_report(args: argparse.Namespace) -> int:
+    formats = _parse_formats(args.format, ("md", "html"))
+    data = load_report(args.report)
+    out = Path(args.output_dir) if args.output_dir else Path(args.report).parent
+    out.mkdir(parents=True, exist_ok=True)
+    if "md" in formats:
+        path = out / "report.md"
+        path.write_text(render_markdown(data), encoding="utf-8")
+        print(f"wrote {path}", file=sys.stderr)
+    if "html" in formats:
+        if "details" not in data:
+            print(
+                "warning: the report has no per-query details; the drilldown will be empty",
+                file=sys.stderr,
+            )
+        print(f"wrote {write_html(data, out / 'report.html')}", file=sys.stderr)
+    return EXIT_OK
+
+
+def cmd_gate(args: argparse.Namespace) -> int:
+    data = load_report(args.report)
+    reference = load_report(args.reference) if args.reference else None
+    if not (args.floors or args.max_drop is not None or args.max_relative_drop is not None):
+        raise ConfigError("set at least one of --min, --max-drop or --max-relative-drop")
+    result = check_report(
+        data,
+        reference=reference,
+        metrics=args.metrics or None,
+        floors=dict(args.floors),
+        max_drop=args.max_drop,
+        max_relative_drop=args.max_relative_drop,
+        systems=args.systems or None,
+        significant_only=args.significant_only,
+        alpha=args.alpha,
+        permutations=args.permutations,
+        seed=args.seed,
+    )
+    summary = result.to_markdown()
+    print(summary)
+    if args.summary:
+        with open(args.summary, "a", encoding="utf-8") as fh:
+            fh.write(summary + "\n")
+    if args.json_out:
+        write_json(args.json_out, result.to_dict())
+    return EXIT_OK if result.passed else EXIT_GATE_FAILED
+
+
+def _json_arg(value: str | None, what: str, from_file: bool) -> Any:
+    if value is None:
+        return None
+    try:
+        text = Path(value).read_text(encoding="utf-8") if from_file else value
+        data = json.loads(text)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ConfigError(f"invalid {what}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ConfigError(f"{what} must be a JSON object")
+    return data
+
+
+def cmd_fetch(args: argparse.Namespace) -> int:
+    from llm_search_eval.connectors import (
+        AlgoliaConnector,
+        ElasticsearchConnector,
+        OpenSearchConnector,
+        fetch_run,
+    )
+    from llm_search_eval.connectors.base import SearchConnector
+
+    queries = load_queries(args.queries)
+    connector: SearchConnector
+    if args.backend == "algolia":
+        connector = AlgoliaConnector(
+            args.app_id,
+            args.index,
+            params=_json_arg(args.params, "--params", from_file=False),
+            id_field=args.id_field or "objectID",
+            timeout=args.timeout,
+        )
+    else:
+        cls = ElasticsearchConnector if args.backend == "elasticsearch" else OpenSearchConnector
+        options: dict[str, Any] = {}
+        if args.fields:
+            options["fields"] = [f.strip() for f in args.fields.split(",") if f.strip()]
+        connector = cls(
+            args.url,
+            args.index,
+            query_template=_json_arg(args.template, "--template", from_file=True),
+            id_field=args.id_field,
+            username=args.username,
+            timeout=args.timeout,
+            **options,
+        )
+    try:
+        result = fetch_run(
+            connector, queries, k=args.k, name=args.name, concurrency=args.concurrency
+        )
+    finally:
+        connector.close()
+    path = write_run(args.output, result.run)
+    print(
+        f"wrote {path}: {len(result.run.rankings)} of {len(queries)} queries from {args.backend}",
+        file=sys.stderr,
+    )
+    if result.failures:
+        for qid, message in sorted(result.failures.items()):
+            print(f"error: query {qid}: {message}", file=sys.stderr)
         return EXIT_JUDGE_FAILURES
     return EXIT_OK
 
@@ -196,7 +520,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
         silent = [q for q in dataset.queries if not run.rankings.get(q)]
         if silent:
             problems.append(f"{run.name}: no results for {len(silent)} query(ies)")
-    langs = {}
+    langs: dict[str | None, int] = {}
     for q in dataset.queries.values():
         langs[q.lang] = langs.get(q.lang, 0) + 1
     print(
@@ -217,9 +541,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         format="%(levelname)s: %(message)s",
     )
     try:
-        if args.command == "run":
-            return cmd_run(args)
-        return cmd_validate(args)
+        commands = {
+            "run": cmd_run,
+            "validate": cmd_validate,
+            "report": cmd_report,
+            "gate": cmd_gate,
+            "fetch": cmd_fetch,
+        }
+        return commands[args.command](args)
     except LLMSearchEvalError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_USAGE

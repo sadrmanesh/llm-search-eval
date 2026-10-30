@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from llm_search_eval.evaluate import EvaluationReport
+from llm_search_eval.html_report import render_html
 
 
 def _fmt(value: float | None, digits: int = 4) -> str:
@@ -168,6 +169,8 @@ def render_markdown(report: EvaluationReport | dict[str, Any]) -> str:
             "that surfaces products the gold set never saw. Enable a judge to fill the gaps.",
             "",
         ]
+    out += _judging_section(data.get("judging"))
+    out += _cost_section(data.get("cost"))
     out += [
         "---",
         f"Produced by llm-search-eval {data['tool']['version']} at {data['generated_at']}.",
@@ -176,10 +179,141 @@ def render_markdown(report: EvaluationReport | dict[str, Any]) -> str:
     return "\n".join(out)
 
 
+def _ratio(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.1%}"
+
+
+def _judging_section(judging: dict[str, Any] | None) -> list[str]:
+    if not judging:
+        return []
+    out = ["## Judges", ""]
+    dist = judging["label_distribution"]
+    out.append(
+        f"Judge `{_escape(judging['judge'])}` labeled {judging['pairs']} pair(s). "
+        "Grade distribution: " + ", ".join(f"{g}: {dist[g]}" for g in ("3", "2", "1", "0")) + "."
+    )
+    out.append("")
+    agreement = judging.get("agreement")
+    if agreement:
+        alpha = agreement["krippendorff_alpha"]
+        out += ["### Inter-judge agreement", ""]
+        out += _table(
+            ["Statistic", "Value"],
+            [
+                ["Items with every vote", str(agreement["complete_items"])],
+                ["Unanimous", _ratio(agreement["unanimous"])],
+                ["Fleiss' kappa", _fmt(agreement["fleiss_kappa"], 3)],
+                ["Krippendorff's alpha (ordinal)", _fmt(alpha["ordinal"], 3)],
+                ["Krippendorff's alpha (nominal)", _fmt(alpha["nominal"], 3)],
+            ],
+        )
+        out.append("")
+        out += _table(
+            ["Judges", "n", "Agreement", "Cohen's kappa", "Weighted kappa"],
+            (
+                [
+                    f"`{_escape(p['a'])}` / `{_escape(p['b'])}`",
+                    str(p["n"]),
+                    _ratio(p["percent_agreement"]),
+                    _fmt(p["cohen_kappa"], 3),
+                    _fmt(p["weighted_kappa"], 3),
+                ]
+                for p in agreement["pairwise"]
+            ),
+        )
+        out.append("")
+    gold = judging.get("gold_agreement")
+    if gold:
+        out += ["### Agreement with gold labels", ""]
+        raters = [(judging["judge"], gold["judge"]), *gold["members"].items()]
+        out += _table(
+            ["Rater", "n", "Exact", "Within one", "Binary", "Weighted kappa", "Mean bias"],
+            (
+                [
+                    f"`{_escape(name)}`",
+                    str(stats["n"]),
+                    _ratio(stats["exact"]),
+                    _ratio(stats["within_one"]),
+                    _ratio(stats["binary_agreement"]),
+                    _fmt(stats["weighted_kappa"], 3),
+                    _signed(stats["mean_bias"], 3),
+                ]
+                for name, stats in raters
+            ),
+        )
+        out += [
+            "",
+            f"Binary agreement treats grades >= {gold['threshold']} as relevant. Weighted kappa "
+            "uses quadratic weights. A positive bias means the judge grades more leniently "
+            "than the gold labels.",
+            "",
+        ]
+    return out
+
+
+def _money(value: float | None) -> str:
+    return "unknown" if value is None else f"${value:,.4f}"
+
+
+def _cost_section(cost: dict[str, Any] | None) -> list[str]:
+    if not cost or not (cost["requests"] or cost["cache_hits"] or cost["budget"]["skipped_pairs"]):
+        return []
+    out = ["## Cost and usage", ""]
+    rows = [
+        [
+            f"`{_escape(name)}`",
+            str(m["requests"]),
+            f"{m['prompt_tokens']:,}",
+            f"{m['completion_tokens']:,}",
+            _money(m["cost_usd"]),
+        ]
+        for name, m in cost["models"].items()
+    ]
+    rows.append(
+        [
+            "**Total**",
+            str(cost["requests"]),
+            f"{cost['prompt_tokens']:,}",
+            f"{cost['completion_tokens']:,}",
+            f"**{_money(cost['cost_usd'])}**",
+        ]
+    )
+    out += _table(["Model", "Requests", "Input tokens", "Output tokens", "Cost"], rows)
+    out += ["", f"Judgments served from cache at no cost: {cost['cache_hits']}."]
+    if cost["unpriced_models"]:
+        names = ", ".join(f"`{_escape(n)}`" for n in cost["unpriced_models"])
+        out.append(f"No price configured for {names}; set one with `--price` or `--price-file`.")
+    budget = cost["budget"]
+    limits = [
+        f"{label} {value}"
+        for label, value in (
+            ("max cost USD", budget["max_cost_usd"]),
+            ("max tokens", budget["max_tokens"]),
+            ("max judgments", budget["max_judgments"]),
+        )
+        if value is not None
+    ]
+    if limits:
+        state = (
+            f"reached ({budget['reason']}); {budget['skipped_pairs']} pair(s) were not judged"
+            if budget["exhausted"]
+            else "not reached"
+        )
+        out.append(f"Budget: {', '.join(limits)}. Status: {state}.")
+    out.append("")
+    return out
+
+
 def write_reports(
     report: EvaluationReport, output_dir: str | Path, formats: Sequence[str] = ("md", "json")
 ) -> list[Path]:
-    """Write ``report.md``, ``report.json`` and ``judgments.jsonl`` into ``output_dir``."""
+    """Write the requested reports into ``output_dir``.
+
+    ``formats`` may contain ``md``, ``json``, and ``html``. ``judgments.jsonl`` is
+    written whenever a judge produced labels, and ``cost.json`` whenever a judge
+    was used.
+    """
+
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
@@ -193,17 +327,32 @@ def write_reports(
             json.dumps(report.to_dict(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
         written.append(path)
+    if "html" in formats:
+        path = out / "report.html"
+        path.write_text(render_html(report), encoding="utf-8")
+        written.append(path)
+    data = report.to_dict()
+    if data.get("judging") and data.get("cost"):
+        path = out / "cost.json"
+        path.write_text(
+            json.dumps(data["cost"], ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        written.append(path)
     if report.judgments:
         path = out / "judgments.jsonl"
         with path.open("w", encoding="utf-8") as fh:
             for j in report.judgments:
-                record = {
+                record: dict[str, Any] = {
                     "query_id": j.query_id,
                     "product_id": j.product_id,
                     "relevance": j.relevance,
                     "reason": j.reason,
                     "source": j.source,
                 }
+                if j.votes:
+                    record["votes"] = {v.judge: v.relevance for v in j.votes}
+                if j.gold is not None:
+                    record["gold"] = j.gold
                 fh.write(json.dumps(record, ensure_ascii=False) + "\n")
         written.append(path)
     return written

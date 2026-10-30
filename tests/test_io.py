@@ -12,7 +12,9 @@ from llm_search_eval.io import (
     load_run,
     read_records,
     write_json,
+    write_run,
 )
+from llm_search_eval.models import Run
 
 
 def write(path, text):
@@ -177,3 +179,10 @@ def test_write_json_creates_parents(tmp_path):
     target = tmp_path / "a" / "b.json"
     write_json(target, {"متن": "سلام"})
     assert "سلام" in target.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("suffix", [".jsonl", ".trec"])
+def test_write_run_round_trips(tmp_path, suffix):
+    run = Run("my system", {"q1": ["a", "b"], "q2": ["c"]})
+    path = write_run(tmp_path / f"out{suffix}", run)
+    assert load_run(path, "x").rankings == run.rankings

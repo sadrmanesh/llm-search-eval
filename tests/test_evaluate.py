@@ -125,6 +125,7 @@ def test_evaluation_is_deterministic(example_dataset, example_runs):
         (EvaluationConfig(permutations=-1), "permutations"),
         (EvaluationConfig(metrics=["mrr"], primary_metric="ndcg@5"), "primary metric"),
         (EvaluationConfig(baseline="missing"), "baseline"),
+        (EvaluationConfig(calibration_sample=0), "calibration_sample"),
     ],
 )
 def test_invalid_configuration(tiny_dataset, config, message):
@@ -178,3 +179,81 @@ def test_randomization_test_is_seeded():
     a = [0.3, 0.8, 0.5, 0.9, 0.2, 0.7]
     b = [0.2, 0.6, 0.5, 0.4, 0.3, 0.5]
     assert paired_randomization_test(a, b, seed=1) == paired_randomization_test(a, b, seed=1)
+
+
+# Panels, calibration, cost and budgets --------------------------------------------
+
+
+class MeteredJudge(CountingJudge):
+    name = "metered"
+
+    def judge(self, query, product):
+        from llm_search_eval.judges.base import TokenUsage
+
+        self.calls += 1
+        return Judgment(self.grade, "ok", usage=TokenUsage("m", 100, 10))
+
+
+def test_cost_tracking_and_cache_hits(tiny_dataset):
+    from llm_search_eval.usage import CostTracker, PriceTable
+
+    runs = [Run("sys", {"q1": ["a", "c"], "q2": ["d", "b"]})]
+    cache = JudgmentCache()
+    tracker = CostTracker(prices=PriceTable.parse_specs(["m=1,10"]))
+    report = evaluate(tiny_dataset, runs, judge=MeteredJudge(), cache=cache, tracker=tracker)
+    cost = report.to_dict()["cost"]
+    assert cost["requests"] == 2
+    assert cost["total_tokens"] == 220
+    assert cost["cost_usd"] == pytest.approx(2 * (100 * 1 + 10 * 10) / 1_000_000)
+    again = evaluate(tiny_dataset, runs, judge=MeteredJudge(), cache=cache)
+    assert again.to_dict()["cost"]["cache_hits"] == 2
+    assert again.to_dict()["cost"]["requests"] == 0
+
+
+def test_budget_leaves_pairs_unlabeled(tiny_dataset):
+    from llm_search_eval.usage import Budget, CostTracker
+
+    runs = [Run("sys", {"q1": ["a", "c"], "q2": ["d", "b", "c"]})]
+    judge = MeteredJudge()
+    tracker = CostTracker(budget=Budget(max_judgments=1))
+    config = EvaluationConfig(concurrency=1)
+    report = evaluate(tiny_dataset, runs, config, judge=judge, tracker=tracker)
+    data = report.to_dict()
+    assert judge.calls == 1
+    assert data["labels"]["skipped_budget"] == 2
+    assert data["labels"]["unlabeled"] == 2
+    assert data["cost"]["budget"]["exhausted"]
+
+
+def test_panel_agreement_and_calibration(example_dataset, example_runs):
+    from llm_search_eval.judges.panel import JudgePanel
+
+    panel = JudgePanel([MockJudge(noise=0.3, seed=s) for s in (1, 2, 3)])
+    config = EvaluationConfig(permutations=100, calibrate=True)
+    report = evaluate(example_dataset, example_runs, config, judge=panel)
+    data = report.to_dict()
+    judging = data["judging"]
+    assert judging["panel"]["members"] == panel.labels
+    assert judging["panel"]["min_votes"] == 2
+    assert judging["agreement"]["complete_items"] == judging["pairs"]
+    assert -1 <= judging["agreement"]["fleiss_kappa"] <= 1
+    gold = judging["gold_agreement"]
+    assert gold["judge"]["n"] == data["labels"]["calibration"] > 0
+    assert set(gold["members"]) == set(panel.labels)
+    # Calibration never changes scores: gold labels still win.
+    plain = evaluate(example_dataset, example_runs, EvaluationConfig(permutations=100), judge=panel)
+    assert report.mean("bm25", "ndcg@10") == plain.mean("bm25", "ndcg@10")
+
+
+def test_calibration_sample_and_details(tiny_dataset):
+    judge = CountingJudge(grade=1)
+    config = EvaluationConfig(calibrate=True, calibration_sample=2)
+    runs = [Run("sys", {"q1": ["a", "c"]})]
+    data = evaluate(tiny_dataset, runs, config, judge=judge).to_dict()
+    assert data["labels"]["calibration"] == 2
+    assert judge.calls == 3  # two gold pairs plus (q1, c)
+    details = data["details"]
+    assert details["rankings"]["sys"]["q1"] == ["a", "c"]
+    assert details["labels"]["q1"]["a"]["source"] == "gold"
+    assert details["labels"]["q1"]["c"]["source"] == "judge"
+    assert details["products"]["a"]["title"] == "Red Running Shoes"

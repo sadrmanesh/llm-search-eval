@@ -12,11 +12,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any
 
+from llm_search_eval.agreement import gold_agreement, inter_judge_agreement
 from llm_search_eval.errors import ConfigError, JudgeError
-from llm_search_eval.judges.base import Judge
+from llm_search_eval.judges.base import Judge, Vote
 from llm_search_eval.judges.cache import JudgmentCache, cache_key
+from llm_search_eval.judges.panel import JudgePanel
 from llm_search_eval.metrics import DEFAULT_METRICS, Metric, parse_metrics
 from llm_search_eval.models import Dataset, Qrels, Run
+from llm_search_eval.usage import BudgetExceededError, CostTracker
 
 log = logging.getLogger(__name__)
 
@@ -39,6 +42,13 @@ class EvaluationConfig:
     seed: int = 13
     concurrency: int = 4
     title: str = "Search evaluation report"
+    #: Also judge pairs that have gold labels, to measure judge versus gold agreement.
+    #: Gold labels still decide the score; the extra judgments are only for calibration.
+    calibrate: bool = False
+    #: Judge at most this many gold pairs (random sample with ``seed``) when calibrating.
+    calibration_sample: int | None = None
+    #: Store rankings, labels, and product titles in the report for the HTML dashboard.
+    include_details: bool = True
 
     def parsed_metrics(self) -> list[Metric]:
         return parse_metrics(self.metrics)
@@ -70,6 +80,8 @@ class EvaluationConfig:
             raise ConfigError("gain must be 'exponential' or 'linear'")
         if self.permutations < 0:
             raise ConfigError("permutations must be zero or positive")
+        if self.calibration_sample is not None and self.calibration_sample < 1:
+            raise ConfigError("calibration_sample must be a positive integer")
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +91,9 @@ class JudgedPair:
     relevance: int
     reason: str
     source: str  # "judge" or "cache"
+    votes: tuple[Vote, ...] = ()
+    #: Gold label of the pair; set only for calibration judgments.
+    gold: int | None = None
 
 
 @dataclass(slots=True)
@@ -89,6 +104,8 @@ class LabelStats:
     failed: int = 0
     unknown_products: int = 0
     unlabeled: int = 0
+    skipped_budget: int = 0
+    calibration: int = 0
     judge: str | None = None
     errors: list[str] = field(default_factory=list)
 
@@ -101,6 +118,8 @@ class LabelStats:
             "failed": self.failed,
             "unknown_products": self.unknown_products,
             "unlabeled": self.unlabeled,
+            "skipped_budget": self.skipped_budget,
+            "calibration": self.calibration,
             "errors": self.errors[:20],
         }
 
@@ -125,6 +144,19 @@ class EvaluationReport:
         return self.system(system)["metrics"][metric]["mean"]
 
 
+def _calibration_pairs(dataset: Dataset, sample: int | None, seed: int) -> list[tuple[str, str]]:
+    pairs = [
+        (qid, pid)
+        for qid, rels in sorted(dataset.qrels.items())
+        if qid in dataset.queries
+        for pid in sorted(rels)
+        if pid in dataset.products
+    ]
+    if sample is not None and sample < len(pairs):
+        pairs = sorted(random.Random(seed).sample(pairs, sample))
+    return pairs
+
+
 def build_labels(
     dataset: Dataset,
     runs: Sequence[Run],
@@ -133,9 +165,18 @@ def build_labels(
     cache: JudgmentCache | None = None,
     concurrency: int = 4,
     progress: ProgressFn | None = None,
+    *,
+    tracker: CostTracker | None = None,
+    calibrate: bool = False,
+    calibration_sample: int | None = None,
+    seed: int = 13,
 ) -> tuple[Qrels, LabelStats, list[JudgedPair]]:
-    """Merge gold labels with judge labels for every pair in the runs' top ``depth``."""
-    stats = LabelStats(judge=judge.fingerprint if judge else None)
+    """Merge gold labels with judge labels for every pair in the runs' top ``depth``.
+
+    With ``calibrate``, gold-labeled pairs are judged as well so the report can
+    measure judge versus gold agreement. Their gold labels are kept for scoring.
+    """
+    stats = LabelStats(judge=judge.label if judge else None)
     labels: Qrels = {qid: dict(rels) for qid, rels in dataset.qrels.items()}
     pending: dict[tuple[str, str], None] = {}  # ordered set
     for run in runs:
@@ -160,6 +201,10 @@ def build_labels(
             stats.unlabeled += 1
         else:
             todo.append((qid, pid))
+    if judge is not None and calibrate:
+        calibration = _calibration_pairs(dataset, calibration_sample, seed)
+        stats.calibration = len(calibration)
+        todo += calibration
 
     judged: list[JudgedPair] = []
     if judge is None or not todo:
@@ -167,17 +212,23 @@ def build_labels(
 
     if cache is None:
         cache = JudgmentCache()
+    if tracker is None:
+        tracker = CostTracker()
 
     def grade(pair: tuple[str, str]) -> JudgedPair:
         qid, pid = pair
         query, product = dataset.queries[qid], dataset.products[pid]
+        gold = dataset.gold_label(qid, pid)
         key = cache_key(judge.fingerprint, query, product)
         hit = cache.get(key)
         if hit is not None:
-            return JudgedPair(qid, pid, hit.relevance, hit.reason, "cache")
+            tracker.record_cache_hit()
+            return JudgedPair(qid, pid, hit.relevance, hit.reason, "cache", hit.votes, gold)
+        tracker.reserve()
         result = judge.judge(query, product)
+        tracker.record(result.usages())
         cache.put(key, result, query_id=qid, product_id=pid)
-        return JudgedPair(qid, pid, result.relevance, result.reason, "judge")
+        return JudgedPair(qid, pid, result.relevance, result.reason, "judge", result.votes, gold)
 
     done = 0
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
@@ -185,24 +236,136 @@ def build_labels(
         for future in as_completed(futures):
             done += 1
             qid, pid = futures[future]
+            is_gold = dataset.gold_label(qid, pid) is not None
             try:
                 pair = future.result()
+            except BudgetExceededError:
+                stats.skipped_budget += 1
+                if not is_gold:
+                    stats.unlabeled += 1
             except JudgeError as exc:
                 stats.failed += 1
-                stats.unlabeled += 1
+                if not is_gold:
+                    stats.unlabeled += 1
                 stats.errors.append(str(exc))
                 log.warning("%s", exc)
             else:
                 judged.append(pair)
-                labels.setdefault(qid, {})[pid] = pair.relevance
+                if not is_gold:
+                    labels.setdefault(qid, {})[pid] = pair.relevance
                 if pair.source == "cache":
                     stats.cached += 1
                 else:
                     stats.judged += 1
             if progress:
                 progress(done, len(todo))
+    if stats.skipped_budget:
+        log.warning(
+            "budget reached: %d pair(s) were not judged (%s)",
+            stats.skipped_budget,
+            tracker.exhausted_reason,
+        )
     judged.sort(key=lambda p: (p.query_id, p.product_id))
     return labels, stats, judged
+
+
+def judge_analysis(
+    judged: Sequence[JudgedPair], judge: Judge | None, threshold: int
+) -> dict[str, Any] | None:
+    """Label distribution, inter-judge agreement, and judge versus gold agreement."""
+    if judge is None:
+        return None
+    members = list(judge.labels) if isinstance(judge, JudgePanel) else []
+    distribution = Counter(p.relevance for p in judged)
+    out: dict[str, Any] = {
+        "judge": judge.label,
+        "fingerprint": judge.fingerprint,
+        "panel": None,
+        "pairs": len(judged),
+        "label_distribution": {str(g): distribution.get(g, 0) for g in range(4)},
+        "agreement": None,
+        "gold_agreement": None,
+    }
+    if members:
+        assert isinstance(judge, JudgePanel)
+        out["panel"] = {
+            "members": members,
+            "aggregation": judge.aggregation,
+            "min_votes": judge.min_votes,
+        }
+        with_votes = [p for p in judged if p.votes]
+        ratings: dict[str, list[int | None]] = {name: [] for name in members}
+        for pair in with_votes:
+            by_name = {v.judge: v.relevance for v in pair.votes}
+            for name in members:
+                ratings[name].append(by_name.get(name))
+        if with_votes:
+            out["agreement"] = inter_judge_agreement(ratings)
+    calibration = [p for p in judged if p.gold is not None]
+    if calibration:
+        gold = [p.gold for p in calibration if p.gold is not None]
+        result: dict[str, Any] = {
+            "threshold": threshold,
+            "judge": gold_agreement([p.relevance for p in calibration], gold, threshold),
+            "members": {},
+        }
+        for name in members:
+            pairs = [
+                (v.relevance, p.gold)
+                for p in calibration
+                for v in p.votes
+                if v.judge == name and v.relevance is not None and p.gold is not None
+            ]
+            if pairs:
+                result["members"][name] = gold_agreement(
+                    [a for a, _ in pairs], [b for _, b in pairs], threshold
+                )
+        out["gold_agreement"] = result
+    return out
+
+
+def build_details(
+    dataset: Dataset, runs: Sequence[Run], depth: int, judged: Sequence[JudgedPair]
+) -> dict[str, Any]:
+    """Rankings, labels, and product summaries for per-query drilldown views."""
+    judged_by_pair = {(p.query_id, p.product_id): p for p in judged if p.gold is None}
+    rankings = {run.name: {qid: run.ranking(qid, depth) for qid in dataset.queries} for run in runs}
+    shown = {pid for system in rankings.values() for ranked in system.values() for pid in ranked}
+    labels: dict[str, dict[str, dict[str, Any]]] = {}
+    for qid in dataset.queries:
+        pids = {pid for system in rankings.values() for pid in system[qid]}
+        pids |= set(dataset.qrels.get(qid, {}))
+        for pid in sorted(pids):
+            gold = dataset.gold_label(qid, pid)
+            entry: dict[str, Any] | None = None
+            if gold is not None:
+                entry = {"grade": gold, "source": "gold"}
+            elif (qid, pid) in judged_by_pair:
+                pair = judged_by_pair[(qid, pid)]
+                entry = {"grade": pair.relevance, "source": pair.source, "reason": pair.reason}
+                if pair.votes:
+                    entry["votes"] = {v.judge: v.relevance for v in pair.votes}
+            if entry is not None:
+                labels.setdefault(qid, {})[pid] = entry
+    products = {}
+    for pid in sorted(shown):
+        product = dataset.products.get(pid)
+        if product is None:
+            continue
+        products[pid] = {
+            "title": product.title,
+            "brand": product.brand,
+            "category": product.category,
+            "price": product.price,
+        }
+    return {
+        "queries": {
+            qid: {"text": q.text, "lang": q.lang or "und"} for qid, q in dataset.queries.items()
+        },
+        "rankings": rankings,
+        "labels": labels,
+        "products": products,
+    }
 
 
 def score_run(
@@ -227,7 +390,7 @@ def score_run(
         unknown += sum(1 for pid in ranking if pid not in dataset.products)
     aggregate = {}
     for m in metrics:
-        values = [v[m.label] for v in per_query.values() if v[m.label] is not None]
+        values = [x for v in per_query.values() if (x := v[m.label]) is not None]
         aggregate[m.label] = {
             "mean": statistics.fmean(values) if values else None,
             "n": len(values),
@@ -343,7 +506,7 @@ def _by_language(
     for system in systems:
         out[system["name"]] = {}
         for lang in langs:
-            values = [
+            values: list[float] = [
                 system["per_query"][qid][primary.label]
                 for qid, q in dataset.queries.items()
                 if (q.lang or "und") == lang and system["per_query"][qid][primary.label] is not None
@@ -362,8 +525,13 @@ def evaluate(
     judge: Judge | None = None,
     cache: JudgmentCache | None = None,
     progress: ProgressFn | None = None,
+    tracker: CostTracker | None = None,
 ) -> EvaluationReport:
-    """Score every run against gold labels, filling gaps with ``judge`` when given."""
+    """Score every run against gold labels, filling gaps with ``judge`` when given.
+
+    Pass a :class:`~llm_search_eval.usage.CostTracker` to price token usage and
+    enforce a budget. Pairs left unjudged because of the budget count as unlabeled.
+    """
     from llm_search_eval import __version__
 
     config = config or EvaluationConfig()
@@ -382,8 +550,19 @@ def evaluate(
     depth = config.resolved_depth()
     primary = config.resolved_primary()
 
+    tracker = tracker or CostTracker()
     labels, stats, judged = build_labels(
-        dataset, runs, depth, judge, cache, config.concurrency, progress
+        dataset,
+        runs,
+        depth,
+        judge,
+        cache,
+        config.concurrency,
+        progress,
+        tracker=tracker,
+        calibrate=config.calibrate,
+        calibration_sample=config.calibration_sample,
+        seed=config.seed,
     )
     systems = [
         score_run(run, dataset, labels, metrics, depth, config.threshold, config.gain)
@@ -406,6 +585,8 @@ def evaluate(
             "baseline": baseline,
             "permutations": config.permutations,
             "seed": config.seed,
+            "calibrate": config.calibrate,
+            "calibration_sample": config.calibration_sample,
         },
         "dataset": {
             "queries": len(dataset.queries),
@@ -417,5 +598,9 @@ def evaluate(
         "systems": systems,
         "comparison": comparison,
         "by_language": _by_language(dataset, systems, primary),
+        "judging": judge_analysis(judged, judge, config.threshold),
+        "cost": tracker.to_dict(),
     }
+    if config.include_details:
+        data["details"] = build_details(dataset, runs, depth, judged)
     return EvaluationReport(data=data, judgments=judged)

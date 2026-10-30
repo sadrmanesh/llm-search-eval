@@ -265,7 +265,7 @@ def _number(value: Any, where: str) -> float | None:
 def _read_trec_run(path: Path) -> list[tuple[str, str, float | None, float | None, int]]:
     if not path.is_file():
         raise DatasetError(f"{path}: file not found")
-    rows = []
+    rows: list[tuple[str, str, float | None, float | None, int]] = []
     for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         parts = line.split()
         if not parts:
@@ -319,3 +319,24 @@ def write_json(path: str | Path, payload: Any) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def write_run(path: str | Path, run: Run) -> Path:
+    """Write a run as JSONL, one row per query: ``{"query_id": ..., "results": [...]}``.
+
+    The output loads back with :func:`load_run`. A ``.trec`` or ``.run`` suffix
+    writes the TREC run format instead.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        if path.suffix.lower() in {".trec", ".run"}:
+            tag = run.name.replace(" ", "_") or "run"
+            for qid, ranked in run.rankings.items():
+                for rank, pid in enumerate(ranked, start=1):
+                    fh.write(f"{qid} Q0 {pid} {rank} {len(ranked) - rank + 1} {tag}\n")
+        else:
+            for qid, ranked in run.rankings.items():
+                fh.write(json.dumps({"query_id": qid, "results": ranked}, ensure_ascii=False))
+                fh.write("\n")
+    return path
