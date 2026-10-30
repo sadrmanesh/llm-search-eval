@@ -8,7 +8,7 @@ import logging
 import threading
 from pathlib import Path
 
-from llm_search_eval.judges.base import Judgment
+from llm_search_eval.judges.base import Judgment, Vote
 from llm_search_eval.models import Product, Query
 
 log = logging.getLogger(__name__)
@@ -39,7 +39,17 @@ class JudgmentCache:
                 continue
             try:
                 rec = json.loads(line)
-                self._entries[rec["key"]] = Judgment(int(rec["relevance"]), rec.get("reason", ""))
+                votes = tuple(
+                    Vote(
+                        str(v["judge"]),
+                        None if v.get("relevance") is None else int(v["relevance"]),
+                        str(v.get("reason", "")),
+                    )
+                    for v in rec.get("votes") or ()
+                )
+                self._entries[rec["key"]] = Judgment(
+                    int(rec["relevance"]), rec.get("reason", ""), votes=votes
+                )
             except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                 log.warning("%s:%d: skipping corrupt cache entry", path, lineno)
 
@@ -58,12 +68,17 @@ class JudgmentCache:
             if self.path is None:
                 return
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            record = {
+            record: dict[str, object] = {
                 "key": key,
                 "query_id": query_id,
                 "product_id": product_id,
                 "relevance": judgment.relevance,
                 "reason": judgment.reason,
             }
+            if judgment.votes:
+                record["votes"] = [
+                    {"judge": v.judge, "relevance": v.relevance, "reason": v.reason}
+                    for v in judgment.votes
+                ]
             with self.path.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(record, ensure_ascii=False) + "\n")

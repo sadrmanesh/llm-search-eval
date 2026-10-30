@@ -276,3 +276,53 @@ def test_in_memory_cache_writes_nothing(tmp_path):
     cache.put("k", Judgment(1))
     assert cache.get("k") == Judgment(1)
     assert list(tmp_path.iterdir()) == []
+
+
+# Token usage and panels in the cache ---------------------------------------------
+
+
+def test_openai_judge_reports_token_usage():
+    body = {
+        "model": "gpt-4o-mini-2024-07-18",
+        "choices": [{"message": {"content": '{"relevance": 2, "reason": "ok"}'}}],
+        "usage": {"prompt_tokens": 120, "completion_tokens": 9, "total_tokens": 129},
+    }
+    judge = make_judge(FakeTransport([HTTPResponse(200, json.dumps(body))]), model="gpt-4o-mini")
+    result = judge.judge(QUERY, PRODUCT)
+    assert result.relevance == 2
+    assert result.usage is not None
+    assert result.usage.model == "gpt-4o-mini-2024-07-18"  # the billed model wins
+    assert (result.usage.prompt_tokens, result.usage.completion_tokens) == (120, 9)
+    assert result.usage.total_tokens == 129
+    assert result.usages() == [result.usage]
+    assert judge.label == "openai:gpt-4o-mini"
+
+
+def test_openai_judge_accepts_input_output_token_names_and_missing_usage():
+    body = {
+        "choices": [{"message": {"content": '{"relevance": 1}'}}],
+        "usage": {"input_tokens": 50, "output_tokens": 4},
+    }
+    judge = make_judge(
+        FakeTransport([HTTPResponse(200, json.dumps(body)), chat('{"relevance": 0}')])
+    )
+    first = judge.judge(QUERY, PRODUCT)
+    assert first.usage is not None
+    assert (first.usage.model, first.usage.prompt_tokens) == (judge.model, 50)
+    assert judge.judge(QUERY, PRODUCT).usage is None
+
+
+def test_cache_keeps_panel_votes(tmp_path):
+    from llm_search_eval.judges.base import Vote
+
+    path = tmp_path / "cache.jsonl"
+    votes = (Vote("a", 3, "yes"), Vote("b", None, "failed: timeout"))
+    JudgmentCache(path).put("k", Judgment(3, "majority", votes=votes))
+    restored = JudgmentCache(path).get("k")
+    assert restored is not None
+    assert [(v.judge, v.relevance) for v in restored.votes] == [("a", 3), ("b", None)]
+
+
+def test_create_judge_reports_invalid_option_values():
+    with pytest.raises(ConfigError, match="invalid options"):
+        create_judge("mock", noise=5)

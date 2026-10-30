@@ -15,11 +15,11 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from llm_search_eval.errors import ConfigError, JudgeError
-from llm_search_eval.judges.base import Judge, Judgment, register_judge
+from llm_search_eval.judges.base import Judge, Judgment, TokenUsage, register_judge
 from llm_search_eval.judges.prompts import PROMPT_VERSION, build_messages
 from llm_search_eval.models import MAX_RELEVANCE, MIN_RELEVANCE, Product, Query
 
@@ -126,6 +126,10 @@ class OpenAICompatibleJudge(Judge):
     def fingerprint(self) -> str:
         return f"openai:{self.base_url}:{self.model}:t={self.temperature}:{PROMPT_VERSION}"
 
+    @property
+    def label(self) -> str:
+        return f"openai:{self.model}"
+
     def _payload(self, query: Query, product: Product) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": self.model,
@@ -151,7 +155,8 @@ class OpenAICompatibleJudge(Judge):
                 last_error = f"network error: {exc}"
             else:
                 if response.status == 200:
-                    return parse_judgment(_message_content(response.body))
+                    content, usage = _message_content(response.body, self.model)
+                    return replace(parse_judgment(content), usage=usage)
                 last_error = f"HTTP {response.status}: {response.body[:300]}"
                 if response.status not in _RETRYABLE_STATUS:
                     break
@@ -168,7 +173,7 @@ def _requires_key(base_url: str) -> bool:
     )
 
 
-def _message_content(body: str) -> str:
+def _message_content(body: str, model: str) -> tuple[str, TokenUsage | None]:
     try:
         data = json.loads(body)
         content = data["choices"][0]["message"]["content"]
@@ -176,4 +181,22 @@ def _message_content(body: str) -> str:
         raise JudgeError(f"unexpected chat completions response: {body[:300]!r}") from exc
     if not isinstance(content, str):
         raise JudgeError("chat completions response has no text content")
-    return content
+    return content, _parse_usage(data, model)
+
+
+def _parse_usage(data: Any, model: str) -> TokenUsage | None:
+    """Read the ``usage`` block. The billed model name wins over the requested one."""
+    usage = data.get("usage") if isinstance(data, dict) else None
+    if not isinstance(usage, dict):
+        return None
+    try:
+        prompt = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
+        completion = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
+    except (TypeError, ValueError):
+        return None
+    billed = data.get("model")
+    return TokenUsage(
+        model=billed if isinstance(billed, str) and billed else model,
+        prompt_tokens=prompt,
+        completion_tokens=completion,
+    )

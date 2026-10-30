@@ -13,11 +13,47 @@ from llm_search_eval.models import Product, Query
 
 
 @dataclass(frozen=True, slots=True)
+class TokenUsage:
+    """Tokens consumed by one model request."""
+
+    model: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+    @property
+    def total_tokens(self) -> int:
+        return self.prompt_tokens + self.completion_tokens
+
+
+@dataclass(frozen=True, slots=True)
+class Vote:
+    """One panel member's label for a pair. ``relevance`` is ``None`` when it failed."""
+
+    judge: str
+    relevance: int | None
+    reason: str = ""
+    usage: TokenUsage | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Judgment:
-    """A graded relevance decision for one (query, product) pair."""
+    """A graded relevance decision for one (query, product) pair.
+
+    ``usage`` is set by judges that call a metered model. ``votes`` is set by
+    :class:`~llm_search_eval.judges.panel.JudgePanel` and holds each member's label.
+    """
 
     relevance: int
     reason: str = ""
+    usage: TokenUsage | None = None
+    votes: tuple[Vote, ...] = ()
+
+    def usages(self) -> list[TokenUsage]:
+        """Every metered request behind this judgment, including panel members."""
+        found = [vote.usage for vote in self.votes if vote.usage is not None]
+        if not found and self.usage is not None:
+            found.append(self.usage)
+        return found
 
 
 class Judge(ABC):
@@ -37,6 +73,11 @@ class Judge(ABC):
         Override when the output depends on settings such as model or prompt version,
         so cached labels from a different configuration are never reused.
         """
+        return self.name
+
+    @property
+    def label(self) -> str:
+        """Short human readable name used in reports and agreement tables."""
         return self.name
 
     @abstractmethod
@@ -84,7 +125,7 @@ def create_judge(spec: str, **options: Any) -> Judge:
         raise ConfigError(f"unknown judge {spec!r}; available: {known}, or 'module:Class'")
     try:
         judge = factory(**options)
-    except TypeError as exc:
+    except (TypeError, ValueError) as exc:
         raise ConfigError(f"invalid options for judge {spec!r}: {exc}") from exc
     if not isinstance(judge, Judge):
         raise ConfigError(f"{spec!r} did not produce a Judge instance")
