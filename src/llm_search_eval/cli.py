@@ -157,6 +157,19 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--baseline", help="system to compare against (default: first system)")
     m.add_argument("--permutations", type=int, default=10_000, help="randomization test rounds")
     m.add_argument("--seed", type=int, default=13)
+    m.add_argument(
+        "--bootstrap",
+        type=int,
+        default=1000,
+        metavar="N",
+        help="bootstrap resamples for confidence intervals; 0 turns them off (default: 1000)",
+    )
+    m.add_argument(
+        "--confidence",
+        type=float,
+        default=0.95,
+        help="confidence level of the intervals (default: %(default)s)",
+    )
 
     o = run.add_argument_group("output")
     o.add_argument("--output-dir", "-o", default="reports", help="report directory")
@@ -341,6 +354,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         primary_metric=args.primary,
         permutations=args.permutations,
         seed=args.seed,
+        bootstrap=args.bootstrap,
+        confidence=args.confidence,
         concurrency=args.concurrency,
         title=args.title,
         calibrate=args.calibrate,

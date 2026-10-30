@@ -31,6 +31,18 @@ def _table(headers: Sequence[str], rows: Iterable[Sequence[str]], align: str = "
     return lines
 
 
+def _ci(entry: dict[str, Any], digits: int = 4, signed: bool = False) -> str:
+    low, high = entry.get("ci_low"), entry.get("ci_high")
+    if low is None or high is None:
+        return "n/a"
+    fmt = _signed if signed else _fmt
+    return f"[{fmt(low, digits)}, {fmt(high, digits)}]"
+
+
+def _confidence_label(cfg: dict[str, Any]) -> str:
+    return f"{round(float(cfg.get('confidence', 0.95)) * 100):g}% CI"
+
+
 def _escape(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
 
@@ -82,6 +94,30 @@ def render_markdown(report: EvaluationReport | dict[str, Any]) -> str:
     if len(comp["ranking"]) > 1:
         leader = comp["ranking"][0]
         out += [f"Best system by `{primary}`: **`{_escape(leader)}`**.", ""]
+    with_ci = cfg.get("bootstrap") and any(
+        "ci_low" in s["metrics"][primary] for s in data["systems"]
+    )
+    if with_ci:
+        label = _confidence_label(cfg)
+        out += [f"## Confidence intervals for `{primary}`", ""]
+        out += _table(
+            ["System", "Mean", label, "Queries"],
+            (
+                [
+                    f"`{_escape(s['name'])}`",
+                    _fmt(s["metrics"][primary]["mean"]),
+                    _ci(s["metrics"][primary]),
+                    str(s["metrics"][primary]["n"]),
+                ]
+                for s in data["systems"]
+            ),
+        )
+        out += [
+            "",
+            f"Percentile bootstrap over queries ({cfg['bootstrap']} resamples, seed "
+            f"{cfg['seed']}). Narrow intervals need more queries, not more judgments.",
+            "",
+        ]
 
     if comp["significance"]:
         out += [f"## Comparison against `{_escape(cfg['baseline'])}`", ""]
@@ -92,26 +128,40 @@ def render_markdown(report: EvaluationReport | dict[str, Any]) -> str:
             )
             p = t["p_value"]
             flag = "" if p is None else (" (significant)" if p < 0.05 else "")
-            rows.append(
-                [
-                    f"`{_escape(t['system'])}`",
-                    _signed(d["delta"]),
-                    _pct(d["relative"]),
-                    f"{t['wins']} / {t['ties']} / {t['losses']}",
-                    ("n/a" if p is None else f"{p:.4f}") + flag,
-                ]
-            )
-        out += _table(["System", f"Δ {primary}", "Relative", "Win / tie / loss", "p-value"], rows)
+            row = [f"`{_escape(t['system'])}`", _signed(d["delta"])]
+            if with_ci:
+                row.append(_ci(d, signed=True))
+            row += [
+                _pct(d["relative"]),
+                f"{t['wins']} / {t['ties']} / {t['losses']}",
+                ("n/a" if p is None else f"{p:.4f}") + flag,
+            ]
+            rows.append(row)
+        headers = ["System", f"Δ {primary}"]
+        if with_ci:
+            headers.append(f"Δ {_confidence_label(cfg)}")
+        headers += ["Relative", "Win / tie / loss", "p-value"]
+        out += _table(headers, rows)
         out += [
             "",
             "p-values come from a two-sided paired randomization test over per-query "
             f"`{primary}` ({cfg['permutations']} permutations, seed {cfg['seed']}).",
+            *(
+                [
+                    "An interval for Δ that excludes zero agrees with a significant p-value "
+                    "in almost every case; when they disagree, the effect is borderline."
+                ]
+                if with_ci
+                else []
+            ),
             "",
             "### All metric deltas",
             "",
         ]
         out += _table(
-            ["System", "Metric", "Baseline", "System value", "Δ", "Relative"],
+            ["System", "Metric", "Baseline", "System value", "Δ"]
+            + ([_confidence_label(cfg)] if with_ci else [])
+            + ["Relative"],
             (
                 [
                     f"`{_escape(d['system'])}`",
@@ -119,11 +169,12 @@ def render_markdown(report: EvaluationReport | dict[str, Any]) -> str:
                     _fmt(d["baseline"]),
                     _fmt(d["value"]),
                     _signed(d["delta"]),
+                    *([_ci(d, signed=True)] if with_ci else []),
                     _pct(d["relative"]),
                 ]
                 for d in comp["deltas"]
             ),
-            align="llrrrr",
+            align="llrrr" + ("r" if with_ci else "") + "r",
         )
         out.append("")
 

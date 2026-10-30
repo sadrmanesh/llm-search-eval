@@ -19,6 +19,7 @@ from llm_search_eval.judges.cache import JudgmentCache, cache_key
 from llm_search_eval.judges.panel import JudgePanel
 from llm_search_eval.metrics import DEFAULT_METRICS, Metric, parse_metrics
 from llm_search_eval.models import Dataset, Qrels, Run
+from llm_search_eval.stats import bootstrap_ci, paired_bootstrap_ci
 from llm_search_eval.usage import BudgetExceededError, CostTracker
 
 log = logging.getLogger(__name__)
@@ -40,6 +41,10 @@ class EvaluationConfig:
     primary_metric: str | None = None
     permutations: int = 10_000
     seed: int = 13
+    #: Bootstrap resamples for confidence intervals; 0 turns intervals off.
+    bootstrap: int = 1000
+    #: Confidence level of the bootstrap intervals.
+    confidence: float = 0.95
     concurrency: int = 4
     title: str = "Search evaluation report"
     #: Also judge pairs that have gold labels, to measure judge versus gold agreement.
@@ -82,6 +87,10 @@ class EvaluationConfig:
             raise ConfigError("permutations must be zero or positive")
         if self.calibration_sample is not None and self.calibration_sample < 1:
             raise ConfigError("calibration_sample must be a positive integer")
+        if self.bootstrap < 0:
+            raise ConfigError("bootstrap must be zero or positive")
+        if not 0.0 < self.confidence < 1.0:
+            raise ConfigError("confidence must be between 0 and 1, for example 0.95")
 
 
 @dataclass(frozen=True, slots=True)
@@ -376,6 +385,10 @@ def score_run(
     depth: int,
     threshold: int,
     gain: str,
+    *,
+    bootstrap: int = 0,
+    confidence: float = 0.95,
+    seed: int = 13,
 ) -> dict[str, Any]:
     per_query: dict[str, dict[str, float | None]] = {}
     slots = labeled = unknown = 0
@@ -391,10 +404,15 @@ def score_run(
     aggregate = {}
     for m in metrics:
         values = [x for v in per_query.values() if (x := v[m.label]) is not None]
-        aggregate[m.label] = {
+        entry: dict[str, Any] = {
             "mean": statistics.fmean(values) if values else None,
             "n": len(values),
         }
+        if bootstrap:
+            ci = bootstrap_ci(values, confidence=confidence, resamples=bootstrap, seed=seed)
+            entry["ci_low"] = None if ci is None else ci.low
+            entry["ci_high"] = None if ci is None else ci.high
+        aggregate[m.label] = entry
     return {
         "name": run.name,
         "metrics": aggregate,
@@ -433,6 +451,16 @@ def paired_randomization_test(
     return (extreme + 1) / (permutations + 1)
 
 
+def _paired(system: dict[str, Any], base: dict[str, Any], metric: str) -> list[tuple[float, float]]:
+    """Per-query values of ``metric`` for queries where both systems have one."""
+    return [
+        (system["per_query"][q][metric], base["per_query"][q][metric])
+        for q in base["per_query"]
+        if system["per_query"].get(q, {}).get(metric) is not None
+        and base["per_query"][q][metric] is not None
+    ]
+
+
 def compare_systems(
     systems: Sequence[dict[str, Any]],
     metrics: Sequence[Metric],
@@ -440,6 +468,9 @@ def compare_systems(
     primary: Metric,
     permutations: int,
     seed: int,
+    *,
+    bootstrap: int = 0,
+    confidence: float = 0.95,
 ) -> dict[str, Any]:
     base = next(s for s in systems if s["name"] == baseline)
     deltas = []
@@ -452,22 +483,27 @@ def compare_systems(
             v = system["metrics"][m.label]["mean"]
             delta = None if b is None or v is None else v - b
             relative = None if delta is None or not b else delta / b
-            deltas.append(
-                {
-                    "system": system["name"],
-                    "metric": m.label,
-                    "baseline": b,
-                    "value": v,
-                    "delta": delta,
-                    "relative": relative,
-                }
-            )
-        pairs = [
-            (system["per_query"][q][primary.label], base["per_query"][q][primary.label])
-            for q in base["per_query"]
-            if system["per_query"][q][primary.label] is not None
-            and base["per_query"][q][primary.label] is not None
-        ]
+            row: dict[str, Any] = {
+                "system": system["name"],
+                "metric": m.label,
+                "baseline": b,
+                "value": v,
+                "delta": delta,
+                "relative": relative,
+            }
+            if bootstrap:
+                paired = _paired(system, base, m.label)
+                ci = paired_bootstrap_ci(
+                    [x for x, _ in paired],
+                    [y for _, y in paired],
+                    confidence=confidence,
+                    resamples=bootstrap,
+                    seed=seed,
+                )
+                row["ci_low"] = None if ci is None else ci.low
+                row["ci_high"] = None if ci is None else ci.high
+            deltas.append(row)
+        pairs = _paired(system, base, primary.label)
         wins = sum(1 for x, y in pairs if x > y + 1e-9)
         losses = sum(1 for x, y in pairs if y > x + 1e-9)
         tests.append(
@@ -565,11 +601,29 @@ def evaluate(
         seed=config.seed,
     )
     systems = [
-        score_run(run, dataset, labels, metrics, depth, config.threshold, config.gain)
+        score_run(
+            run,
+            dataset,
+            labels,
+            metrics,
+            depth,
+            config.threshold,
+            config.gain,
+            bootstrap=config.bootstrap,
+            confidence=config.confidence,
+            seed=config.seed,
+        )
         for run in runs
     ]
     comparison = compare_systems(
-        systems, metrics, baseline, primary, config.permutations, config.seed
+        systems,
+        metrics,
+        baseline,
+        primary,
+        config.permutations,
+        config.seed,
+        bootstrap=config.bootstrap,
+        confidence=config.confidence,
     )
     langs = Counter(q.lang or "und" for q in dataset.queries.values())
     data = {
@@ -585,6 +639,8 @@ def evaluate(
             "baseline": baseline,
             "permutations": config.permutations,
             "seed": config.seed,
+            "bootstrap": config.bootstrap,
+            "confidence": config.confidence,
             "calibrate": config.calibrate,
             "calibration_sample": config.calibration_sample,
         },
