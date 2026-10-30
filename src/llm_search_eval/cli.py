@@ -1,8 +1,9 @@
 """Command line interface for ``llm-search-eval``.
 
-Commands: ``run`` (evaluate), ``validate`` (check inputs), ``report`` (re-render
-a saved report), ``gate`` (fail CI on regressions) and ``fetch`` (collect a run
-from a live search backend).
+Commands: ``run`` (evaluate), ``estimate`` (pre-run cost), ``validate`` (check
+inputs), ``report`` (re-render a saved report), ``gate`` (fail CI on
+regressions), ``fetch`` (collect a run from a live search backend), ``sample``
+(draw a query sample) and ``comment`` (post the report on a pull request).
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -58,6 +60,47 @@ def _system_arg(value: str) -> tuple[str, str]:
     return name, path
 
 
+def _sample_size(value: str) -> int | float:
+    text = value.strip()
+    try:
+        if text.endswith("%"):
+            number: int | float = float(text[:-1]) / 100
+        elif "." in text:
+            number = float(text)
+        else:
+            number = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "expected a number of queries (200), a fraction (0.25) or a percentage (25%)"
+        ) from None
+    if number <= 0 or (isinstance(number, float) and number > 1):
+        raise argparse.ArgumentTypeError("sample must be a positive count or a fraction up to 1")
+    return number
+
+
+def _add_sampling_args(p: argparse.ArgumentParser) -> None:
+    g = p.add_argument_group("sampling")
+    g.add_argument(
+        "--sample",
+        type=_sample_size,
+        metavar="SIZE",
+        help="evaluate a random sample of queries: a count (200), fraction (0.25) or 25%%",
+    )
+    g.add_argument(
+        "--stratify",
+        metavar="FIELD",
+        help="sample in proportion to a query field (lang or an extra column) "
+        "and break the primary metric down by it",
+    )
+    g.add_argument(
+        "--min-per-stratum",
+        type=int,
+        default=1,
+        metavar="N",
+        help="queries drawn from each group at least (default: 1)",
+    )
+
+
 def _add_dataset_args(p: argparse.ArgumentParser) -> None:
     g = p.add_argument_group("dataset")
     g.add_argument(
@@ -87,16 +130,8 @@ def _metric_floor(value: str) -> tuple[str, float]:
         raise argparse.ArgumentTypeError("expected METRIC=VALUE, for example ndcg@10=0.6") from None
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="llm-search-eval",
-        description="Evaluate and compare product search systems with IR metrics and LLM judges.",
-    )
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("-v", "--verbose", action="store_true", help="enable debug logging")
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    run = sub.add_parser("run", help="score and compare one or more search systems")
+def _add_evaluation_args(run: argparse.ArgumentParser) -> None:
+    """Options shared by ``run`` and ``estimate``."""
     _add_dataset_args(run)
     j = run.add_argument_group("judges")
     j.add_argument(
@@ -131,6 +166,31 @@ def build_parser() -> argparse.ArgumentParser:
     )
     j.add_argument("--calibration-sample", type=int, metavar="N", help="judge at most N gold pairs")
 
+    pw = run.add_argument_group("pairwise comparison")
+    pw.add_argument(
+        "--pairwise-judge",
+        metavar="SPEC",
+        help="compare systems head to head with a pairwise judge: mock or "
+        "openai=MODEL[,base_url=URL,...] (uses --model, --base-url and friends)",
+    )
+    pw.add_argument(
+        "--pairwise",
+        dest="pairwise_pairs",
+        action="append",
+        default=[],
+        metavar="A:B",
+        help="systems to compare; repeatable (default: each system vs the baseline)",
+    )
+    pw.add_argument(
+        "--pairwise-k", type=int, default=5, help="results per system shown (default: 5)"
+    )
+    pw.add_argument(
+        "--no-swap",
+        action="store_true",
+        help="judge each query once instead of in both orders (half the cost, more bias)",
+    )
+    pw.add_argument("--pairwise-cache", help="JSONL cache of pairwise verdicts")
+
     c = run.add_argument_group("cost and budget")
     c.add_argument(
         "--price",
@@ -157,7 +217,34 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--baseline", help="system to compare against (default: first system)")
     m.add_argument("--permutations", type=int, default=10_000, help="randomization test rounds")
     m.add_argument("--seed", type=int, default=13)
+    m.add_argument(
+        "--bootstrap",
+        type=int,
+        default=1000,
+        metavar="N",
+        help="bootstrap resamples for confidence intervals; 0 turns them off (default: 1000)",
+    )
+    m.add_argument(
+        "--confidence",
+        type=float,
+        default=0.95,
+        help="confidence level of the intervals (default: %(default)s)",
+    )
 
+    _add_sampling_args(run)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="llm-search-eval",
+        description="Evaluate and compare product search systems with IR metrics and LLM judges.",
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("-v", "--verbose", action="store_true", help="enable debug logging")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    run = sub.add_parser("run", help="score and compare one or more search systems")
+    _add_evaluation_args(run)
     o = run.add_argument_group("output")
     o.add_argument("--output-dir", "-o", default="reports", help="report directory")
     o.add_argument(
@@ -168,6 +255,53 @@ def build_parser() -> argparse.ArgumentParser:
     o.add_argument("--title", default="Search evaluation report")
     o.add_argument("--quiet", action="store_true", help="do not print the summary table")
 
+    estimate = sub.add_parser(
+        "estimate",
+        help="estimate judge calls, tokens and cost of a run without calling any judge",
+        description="Takes the same options as run and prints how many pairs need a judge, "
+        "the estimated tokens and cost, and whether the budget is enough. Exit code 1 "
+        "when the budget would run out.",
+    )
+    _add_evaluation_args(estimate)
+    estimate.add_argument(
+        "--output-tokens",
+        type=int,
+        default=40,
+        metavar="N",
+        help="assumed reply tokens per judge call (default: %(default)s)",
+    )
+    estimate.add_argument("--json", action="store_true", help="print the estimate as JSON")
+
+    comment = sub.add_parser(
+        "comment",
+        help="post or update a pull request comment with a Markdown report",
+        description="Joins the given Markdown files into one pull request comment. A hidden "
+        "marker lets later runs update the same comment. In GitHub Actions the repository "
+        "and pull request number come from the environment. Missing permissions only "
+        "print a warning.",
+    )
+    comment.add_argument("files", nargs="+", help="Markdown files, for example gate.md report.md")
+    comment.add_argument("--repo", help="OWNER/NAME (default: $GITHUB_REPOSITORY)")
+    comment.add_argument("--pr", type=int, help="pull request number (default: from the event)")
+    comment.add_argument(
+        "--id",
+        dest="comment_id",
+        default="report",
+        help="comment identity; runs with the same id update one comment (default: report)",
+    )
+    comment.add_argument(
+        "--token-env",
+        default="GITHUB_TOKEN",
+        help="environment variable holding the token (default: %(default)s)",
+    )
+    comment.add_argument("--api-url", help="API base URL (default: $GITHUB_API_URL)")
+    comment.add_argument(
+        "--dry-run", action="store_true", help="print the comment instead of posting it"
+    )
+    comment.add_argument(
+        "--strict", action="store_true", help="exit with an error when the comment is not posted"
+    )
+
     validate = sub.add_parser("validate", help="check dataset and run files for problems")
     _add_dataset_args(validate)
 
@@ -175,6 +309,17 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("report", help="path to report.json")
     report.add_argument("--output-dir", "-o", help="directory (default: next to report.json)")
     report.add_argument("--format", default="html", help="md, html, or both (default: html)")
+
+    sample = sub.add_parser(
+        "sample",
+        help="write a random, optionally stratified, sample of a queries file",
+        description="Draw a reproducible sample of queries, for example to label a "
+        "manageable subset or to keep CI fast. The output is JSONL.",
+    )
+    sample.add_argument("--queries", "-q", required=True, help="queries file")
+    sample.add_argument("--output", "-o", required=True, help="JSONL file to write")
+    sample.add_argument("--seed", type=int, default=13)
+    _add_sampling_args(sample)
 
     gate = sub.add_parser(
         "gate",
@@ -225,17 +370,29 @@ def build_parser() -> argparse.ArgumentParser:
     fetch = sub.add_parser("fetch", help="query a live search backend and save the results")
     fetch.add_argument("--queries", "-q", required=True, help="queries file")
     fetch.add_argument(
-        "--backend", required=True, choices=["elasticsearch", "opensearch", "algolia"]
+        "--backend",
+        required=True,
+        choices=["elasticsearch", "opensearch", "algolia", "meilisearch", "typesense", "http"],
     )
-    fetch.add_argument("--index", required=True, help="index name")
+    fetch.add_argument(
+        "--index", help="index name (collection for Typesense); not used by the http backend"
+    )
     fetch.add_argument("--output", "-o", required=True, help="run file to write (.jsonl or .trec)")
     fetch.add_argument("--name", help="system name stored in TREC output (default: backend)")
     fetch.add_argument("-k", type=int, default=10, help="results per query (default: 10)")
     fetch.add_argument("--concurrency", type=int, default=4)
     fetch.add_argument("--timeout", type=float, default=30.0)
     fetch.add_argument("--id-field", help="document field holding the product id")
+    fetch.add_argument(
+        "--url",
+        help="server URL, e.g. http://localhost:9200; for the http backend the full "
+        "request URL with {{query}} and {{k}} placeholders",
+    )
+    fetch.add_argument(
+        "--params",
+        help="JSON object of extra search parameters (Algolia, Meilisearch, Typesense)",
+    )
     es = fetch.add_argument_group("Elasticsearch and OpenSearch")
-    es.add_argument("--url", help="cluster URL, e.g. http://localhost:9200")
     es.add_argument(
         "--fields",
         help="comma separated fields for the default multi_match query "
@@ -248,7 +405,31 @@ def build_parser() -> argparse.ArgumentParser:
     es.add_argument("--username", help="basic auth user; password from *_PASSWORD")
     al = fetch.add_argument_group("Algolia")
     al.add_argument("--app-id", help="application id (default: $ALGOLIA_APP_ID)")
-    al.add_argument("--params", help="JSON object of extra search parameters")
+    ts = fetch.add_argument_group("Typesense")
+    ts.add_argument(
+        "--query-by", help="comma separated fields to search (default: title,description)"
+    )
+    hj = fetch.add_argument_group("generic HTTP/JSON")
+    hj.add_argument("--method", default="GET", choices=["GET", "POST", "PUT"])
+    hj.add_argument(
+        "--body",
+        help="JSON file with the request body; {{query}}, {{k}} and {{lang}} are filled in",
+    )
+    hj.add_argument(
+        "--header",
+        action="append",
+        default=[],
+        metavar="NAME:VALUE",
+        help="request header; ${ENV_VAR} in the value is expanded; repeatable",
+    )
+    hj.add_argument(
+        "--results-path",
+        default="results",
+        help="dotted path to the result list (default: results)",
+    )
+    hj.add_argument(
+        "--id-path", default="id", help="dotted path to the id inside one result (default: id)"
+    )
     return parser
 
 
@@ -272,7 +453,7 @@ def _parse_formats(value: str, allowed: Sequence[str] = REPORT_FORMATS) -> list[
     return formats
 
 
-def _judge_from_spec(spec: str, args: argparse.Namespace) -> Judge:
+def _judge_options(spec: str, args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
     name, sep, rest = spec.partition("=")
     name = name.strip()
     options: dict[str, Any] = {}
@@ -296,7 +477,34 @@ def _judge_from_spec(spec: str, args: argparse.Namespace) -> Judge:
                 options[key] = value.strip()
             else:
                 options[key] = _option_value(value)
+    if getattr(args, "command", None) == "estimate" and name == "openai":
+        # Nothing is sent while estimating, so a missing API key is fine.
+        options.setdefault("api_key", "not-needed-for-estimate")
+    return name, options
+
+
+def _judge_from_spec(spec: str, args: argparse.Namespace) -> Judge:
+    name, options = _judge_options(spec, args)
     return create_judge(name, **options)
+
+
+def _pair_arg(value: str) -> tuple[str, str]:
+    a, sep, b = value.partition(":")
+    if not sep or not a.strip() or not b.strip():
+        raise ConfigError(f"invalid --pairwise {value!r}; expected SYSTEM_A:SYSTEM_B")
+    return a.strip(), b.strip()
+
+
+def _build_pairwise_judge(args: argparse.Namespace) -> Any:
+    spec = (args.pairwise_judge or "").strip()
+    if not spec or spec == "none":
+        if args.pairwise_pairs:
+            raise ConfigError("--pairwise needs --pairwise-judge")
+        return None
+    from llm_search_eval.judges.pairwise import create_pairwise_judge
+
+    name, options = _judge_options(spec, args)
+    return create_pairwise_judge(name, **options)
 
 
 def _build_judge(args: argparse.Namespace) -> Judge | None:
@@ -316,6 +524,37 @@ def _build_tracker(args: argparse.Namespace) -> CostTracker:
     return CostTracker(prices=prices, budget=budget)
 
 
+def _pairwise_cache(path: str | None) -> Any:
+    from llm_search_eval.pairwise import PairwiseCache
+
+    return PairwiseCache(path)
+
+
+def _evaluation_config(args: argparse.Namespace) -> EvaluationConfig:
+    return EvaluationConfig(
+        metrics=args.metrics,
+        depth=args.depth,
+        threshold=args.threshold,
+        gain=args.gain,
+        baseline=args.baseline,
+        primary_metric=args.primary,
+        permutations=args.permutations,
+        seed=args.seed,
+        bootstrap=args.bootstrap,
+        confidence=args.confidence,
+        concurrency=args.concurrency,
+        title=getattr(args, "title", "Search evaluation report"),
+        calibrate=args.calibrate,
+        calibration_sample=args.calibration_sample,
+        sample_size=args.sample,
+        stratify_by=args.stratify,
+        min_per_stratum=args.min_per_stratum,
+        pairwise_k=args.pairwise_k,
+        pairwise_swap=not args.no_swap,
+        pairwise_pairs=[_pair_arg(p) for p in args.pairwise_pairs] or None,
+    )
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     if not args.systems:
         raise LLMSearchEvalError("at least one --system NAME=PATH is required")
@@ -332,20 +571,12 @@ def cmd_run(args: argparse.Namespace) -> int:
     if judge is None and args.calibrate:
         raise ConfigError("--calibrate needs at least one --judge")
 
-    config = EvaluationConfig(
-        metrics=args.metrics,
-        depth=args.depth,
-        threshold=args.threshold,
-        gain=args.gain,
-        baseline=args.baseline,
-        primary_metric=args.primary,
-        permutations=args.permutations,
-        seed=args.seed,
-        concurrency=args.concurrency,
-        title=args.title,
-        calibrate=args.calibrate,
-        calibration_sample=args.calibration_sample,
-    )
+    config = _evaluation_config(args)
+    pairwise_judge = _build_pairwise_judge(args)
+    if args.stratify and args.sample is None and not args.quiet:
+        print(
+            f"note: no --sample; reporting every query, grouped by {args.stratify}", file=sys.stderr
+        )
     try:
         report = evaluate(
             dataset,
@@ -355,10 +586,14 @@ def cmd_run(args: argparse.Namespace) -> int:
             cache=JudgmentCache(args.cache),
             progress=None if args.quiet else _progress,
             tracker=tracker,
+            pairwise_judge=pairwise_judge,
+            pairwise_cache=_pairwise_cache(args.pairwise_cache),
         )
     finally:
         if judge is not None:
             judge.close()
+        if pairwise_judge is not None:
+            pairwise_judge.close()
     written = write_reports(report, args.output_dir, formats)
     data = report.to_dict()
     if not args.quiet:
@@ -379,10 +614,134 @@ def cmd_run(args: argparse.Namespace) -> int:
             f"{data['cost']['budget']['skipped_pairs']} pair(s) were not judged",
             file=sys.stderr,
         )
-    failed = data["labels"]["failed"]
+    failed = data["labels"]["failed"] + sum(
+        c["failed"] for c in (data.get("pairwise") or {}).get("comparisons", [])
+    )
     if failed:
         print(f"error: {failed} judgment(s) failed; see report.json for details", file=sys.stderr)
         return EXIT_JUDGE_FAILURES
+    return EXIT_OK
+
+
+def cmd_estimate(args: argparse.Namespace) -> int:
+    from llm_search_eval.estimate import estimate_run, render_estimate
+    from llm_search_eval.pairwise import PairwiseCache
+
+    if not args.systems:
+        raise LLMSearchEvalError("at least one --system NAME=PATH is required")
+    dataset = load_dataset(args.queries, args.products, args.qrels)
+    runs = _load_runs(args.systems)
+    tracker = _build_tracker(args)
+    judge = _build_judge(args)
+    if judge is None and args.calibrate:
+        raise ConfigError("--calibrate needs at least one --judge")
+    pairwise_judge = _build_pairwise_judge(args)
+    try:
+        result = estimate_run(
+            dataset,
+            runs,
+            _evaluation_config(args),
+            judge=judge,
+            cache=JudgmentCache(args.cache) if args.cache else None,
+            pairwise_judge=pairwise_judge,
+            pairwise_cache=PairwiseCache(args.pairwise_cache) if args.pairwise_cache else None,
+            prices=tracker.prices,
+            budget=tracker.budget,
+            output_tokens=args.output_tokens,
+        )
+    finally:
+        if judge is not None:
+            judge.close()
+        if pairwise_judge is not None:
+            pairwise_judge.close()
+    if args.json:
+        print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
+    else:
+        print("\n".join(render_estimate(result)))
+    return 1 if result.budget_problems() else 0
+
+
+def cmd_comment(args: argparse.Namespace) -> int:
+    from llm_search_eval.github import (
+        DEFAULT_API_URL,
+        GitHubClient,
+        PullRequestContext,
+        build_body,
+        context_from_env,
+        run_url,
+        upsert_comment,
+    )
+
+    parts = []
+    for name in args.files:
+        path = Path(name)
+        if not path.is_file():
+            if args.strict:
+                raise ConfigError(f"{name} does not exist")
+            continue
+        parts.append(path.read_text(encoding="utf-8").strip())
+    if not parts:
+        raise ConfigError("none of the comment files exist")
+    text = "\n\n".join(parts)
+    link = run_url()
+    footer = f"[Workflow run and full report]({link})" if link else ""
+    if args.dry_run:
+        print(build_body(text, args.comment_id, footer))
+        return 0
+
+    context = context_from_env()
+    repo = args.repo or (context.repository if context else None)
+    number = args.pr or (context.number if context else None)
+    api_url = args.api_url or (context.api_url if context else None)
+    api_url = api_url or os.environ.get("GITHUB_API_URL") or DEFAULT_API_URL
+    if not repo or not number:
+        message = "not a pull request (set --repo and --pr); no comment posted"
+        if args.strict:
+            raise ConfigError(message)
+        print(f"note: {message}", file=sys.stderr)
+        return 0
+    token = os.environ.get(args.token_env, "")
+    if not token:
+        message = f"${args.token_env} is empty; no comment posted"
+        if args.strict:
+            raise ConfigError(message)
+        print(f"warning: {message}", file=sys.stderr)
+        return 0
+    client = GitHubClient(token, api_url)
+    result = upsert_comment(
+        client,
+        PullRequestContext(repo, number, api_url),
+        text,
+        comment_id=args.comment_id,
+        footer=footer,
+    )
+    if result.action == "skipped":
+        if args.strict:
+            raise LLMSearchEvalError(f"comment not posted: {result.reason}")
+        print(f"warning: comment not posted: {result.reason}", file=sys.stderr)
+        return 0
+    print(f"{result.action} comment {result.url or ''}".rstrip())
+    return 0
+
+
+def cmd_sample(args: argparse.Namespace) -> int:
+    from llm_search_eval.io import write_queries
+    from llm_search_eval.sampling import sample_queries
+
+    if args.sample is None:
+        raise ConfigError("--sample is required, for example --sample 200 or --sample 0.1")
+    queries = load_queries(args.queries)
+    result = sample_queries(
+        queries,
+        args.sample,
+        stratify_by=args.stratify,
+        seed=args.seed,
+        min_per_stratum=args.min_per_stratum,
+    )
+    path = write_queries(args.output, result.queries)
+    print(f"wrote {path}: {len(result.queries)} of {result.population} queries", file=sys.stderr)
+    for name, counts in result.strata.items():
+        print(f"  {name}: {counts['sampled']} of {counts['population']}", file=sys.stderr)
     return EXIT_OK
 
 
@@ -450,14 +809,54 @@ def cmd_fetch(args: argparse.Namespace) -> int:
     from llm_search_eval.connectors import (
         AlgoliaConnector,
         ElasticsearchConnector,
+        HTTPJSONConnector,
+        MeilisearchConnector,
         OpenSearchConnector,
+        TypesenseConnector,
         fetch_run,
     )
     from llm_search_eval.connectors.base import SearchConnector
 
+    if args.backend != "http" and not args.index:
+        raise ConfigError(f"--index is required for the {args.backend} backend")
     queries = load_queries(args.queries)
     connector: SearchConnector
-    if args.backend == "algolia":
+    if args.backend == "http":
+        if not args.url:
+            raise ConfigError("--url is required for the http backend")
+        headers = {}
+        for item in args.header:
+            key, sep, value = item.partition(":")
+            if not sep or not key.strip():
+                raise ConfigError(f"invalid --header {item!r}; expected NAME:VALUE")
+            headers[key.strip()] = value.strip()
+        connector = HTTPJSONConnector(
+            args.url,
+            method=args.method,
+            body=_json_arg(args.body, "--body", from_file=True),
+            headers=headers,
+            results_path=args.results_path,
+            id_path=args.id_path,
+            timeout=args.timeout,
+        )
+    elif args.backend == "meilisearch":
+        connector = MeilisearchConnector(
+            args.url,
+            args.index,
+            params=_json_arg(args.params, "--params", from_file=False),
+            id_field=args.id_field or "id",
+            timeout=args.timeout,
+        )
+    elif args.backend == "typesense":
+        connector = TypesenseConnector(
+            args.url,
+            args.index,
+            query_by=args.query_by or "title,description",
+            params=_json_arg(args.params, "--params", from_file=False),
+            id_field=args.id_field or "id",
+            timeout=args.timeout,
+        )
+    elif args.backend == "algolia":
         connector = AlgoliaConnector(
             args.app_id,
             args.index,
@@ -466,6 +865,8 @@ def cmd_fetch(args: argparse.Namespace) -> int:
             timeout=args.timeout,
         )
     else:
+        if not args.url:
+            raise ConfigError(f"--url is required for the {args.backend} backend")
         cls = ElasticsearchConnector if args.backend == "elasticsearch" else OpenSearchConnector
         options: dict[str, Any] = {}
         if args.fields:
@@ -547,6 +948,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "report": cmd_report,
             "gate": cmd_gate,
             "fetch": cmd_fetch,
+            "sample": cmd_sample,
+            "estimate": cmd_estimate,
+            "comment": cmd_comment,
         }
         return commands[args.command](args)
     except LLMSearchEvalError as exc:

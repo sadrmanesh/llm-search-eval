@@ -1,10 +1,10 @@
 {
   "tool": {
     "name": "llm-search-eval",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "title": "Electronics catalog: lexical vs semantic vs hybrid",
-  "generated_at": "2026-10-30T16:36:22+00:00",
+  "generated_at": "2026-10-30T18:40:59+00:00",
   "config": {
     "metrics": [
       "ndcg@5",
@@ -21,8 +21,12 @@
     "baseline": "bm25",
     "permutations": 10000,
     "seed": 13,
+    "bootstrap": 1000,
+    "confidence": 0.95,
     "calibrate": true,
-    "calibration_sample": null
+    "calibration_sample": null,
+    "sample_size": null,
+    "stratify_by": null
   },
   "dataset": {
     "queries": 10,
@@ -31,7 +35,9 @@
     "languages": {
       "en": 5,
       "fa": 5
-    }
+    },
+    "population": 10,
+    "sampling": null
   },
   "labels": {
     "judge": "mock",
@@ -51,27 +57,39 @@
       "metrics": {
         "ndcg@5": {
           "mean": 0.5304716019917938,
-          "n": 10
+          "n": 10,
+          "ci_low": 0.3969821093049387,
+          "ci_high": 0.6293106065236498
         },
         "ndcg@10": {
           "mean": 0.5304716019917938,
-          "n": 10
+          "n": 10,
+          "ci_low": 0.3969821093049387,
+          "ci_high": 0.6293106065236498
         },
         "precision@5": {
           "mean": 0.22000000000000003,
-          "n": 10
+          "n": 10,
+          "ci_low": 0.15999999999999998,
+          "ci_high": 0.28
         },
         "recall@10": {
           "mean": 0.4833333333333333,
-          "n": 10
+          "n": 10,
+          "ci_low": 0.36666666666666664,
+          "ci_high": 0.5666666666666667
         },
         "mrr": {
           "mean": 0.8,
-          "n": 10
+          "n": 10,
+          "ci_low": 0.6,
+          "ci_high": 1.0
         },
         "map": {
           "mean": 0.4305555555555555,
-          "n": 10
+          "n": 10,
+          "ci_low": 0.31666666666666665,
+          "ci_high": 0.5222916666666666
         }
       },
       "coverage": {
@@ -169,27 +187,39 @@
       "metrics": {
         "ndcg@5": {
           "mean": 0.9865450434615728,
-          "n": 10
+          "n": 10,
+          "ci_low": 0.965711016418069,
+          "ci_high": 1.0
         },
         "ndcg@10": {
           "mean": 0.9865450434615728,
-          "n": 10
+          "n": 10,
+          "ci_low": 0.965711016418069,
+          "ci_high": 1.0
         },
         "precision@5": {
           "mean": 0.42000000000000004,
-          "n": 10
+          "n": 10,
+          "ci_low": 0.39999999999999997,
+          "ci_high": 0.4600000000000001
         },
         "recall@10": {
           "mean": 0.9666666666666666,
-          "n": 10
+          "n": 10,
+          "ci_low": 0.9,
+          "ci_high": 1.0
         },
         "mrr": {
           "mean": 1.0,
-          "n": 10
+          "n": 10,
+          "ci_low": 1.0,
+          "ci_high": 1.0
         },
         "map": {
           "mean": 0.9666666666666666,
-          "n": 10
+          "n": 10,
+          "ci_low": 0.9,
+          "ci_high": 1.0
         }
       },
       "coverage": {
@@ -287,27 +317,39 @@
       "metrics": {
         "ndcg@5": {
           "mean": 0.9767451506431298,
-          "n": 10
+          "n": 10,
+          "ci_low": 0.9523558389114082,
+          "ci_high": 0.9950154206454378
         },
         "ndcg@10": {
           "mean": 0.9767451506431298,
-          "n": 10
+          "n": 10,
+          "ci_low": 0.9523558389114082,
+          "ci_high": 0.9950154206454378
         },
         "precision@5": {
           "mean": 0.42000000000000004,
-          "n": 10
+          "n": 10,
+          "ci_low": 0.39999999999999997,
+          "ci_high": 0.4600000000000001
         },
         "recall@10": {
           "mean": 0.9666666666666666,
-          "n": 10
+          "n": 10,
+          "ci_low": 0.9,
+          "ci_high": 1.0
         },
         "mrr": {
           "mean": 1.0,
-          "n": 10
+          "n": 10,
+          "ci_low": 1.0,
+          "ci_high": 1.0
         },
         "map": {
           "mean": 0.9583333333333334,
-          "n": 10
+          "n": 10,
+          "ci_low": 0.8916666666666666,
+          "ci_high": 1.0
         }
       },
       "coverage": {
@@ -416,7 +458,9 @@
         "baseline": 0.5304716019917938,
         "value": 0.9865450434615728,
         "delta": 0.456073441469779,
-        "relative": 0.8597509079794894
+        "relative": 0.8597509079794894,
+        "ci_low": 0.35926527798158864,
+        "ci_high": 0.5953066242425685
       },
       {
         "system": "semantic",
@@ -424,7 +468,9 @@
         "baseline": 0.5304716019917938,
         "value": 0.9865450434615728,
         "delta": 0.456073441469779,
-        "relative": 0.8597509079794894
+        "relative": 0.8597509079794894,
+        "ci_low": 0.35926527798158864,
+        "ci_high": 0.5953066242425685
       },
       {
         "system": "semantic",
@@ -432,7 +478,9 @@
         "baseline": 0.22000000000000003,
         "value": 0.42000000000000004,
         "delta": 0.2,
-        "relative": 0.9090909090909091
+        "relative": 0.9090909090909091,
+        "ci_low": 0.13999999999999999,
+        "ci_high": 0.26
       },
       {
         "system": "semantic",
@@ -440,7 +488,9 @@
         "baseline": 0.4833333333333333,
         "value": 0.9666666666666666,
         "delta": 0.4833333333333333,
-        "relative": 1.0
+        "relative": 1.0,
+        "ci_low": 0.35,
+        "ci_high": 0.6333333333333333
       },
       {
         "system": "semantic",
@@ -448,7 +498,9 @@
         "baseline": 0.8,
         "value": 1.0,
         "delta": 0.19999999999999996,
-        "relative": 0.24999999999999994
+        "relative": 0.24999999999999994,
+        "ci_low": 0.0,
+        "ci_high": 0.4
       },
       {
         "system": "semantic",
@@ -456,7 +508,9 @@
         "baseline": 0.4305555555555555,
         "value": 0.9666666666666666,
         "delta": 0.536111111111111,
-        "relative": 1.2451612903225804
+        "relative": 1.2451612903225804,
+        "ci_low": 0.4333333333333333,
+        "ci_high": 0.6668749999999999
       },
       {
         "system": "hybrid",
@@ -464,7 +518,9 @@
         "baseline": 0.5304716019917938,
         "value": 0.9767451506431298,
         "delta": 0.44627354865133606,
-        "relative": 0.8412769825485206
+        "relative": 0.8412769825485206,
+        "ci_low": 0.3400542288401345,
+        "ci_high": 0.5762096962680768
       },
       {
         "system": "hybrid",
@@ -472,7 +528,9 @@
         "baseline": 0.5304716019917938,
         "value": 0.9767451506431298,
         "delta": 0.44627354865133606,
-        "relative": 0.8412769825485206
+        "relative": 0.8412769825485206,
+        "ci_low": 0.3400542288401345,
+        "ci_high": 0.5762096962680768
       },
       {
         "system": "hybrid",
@@ -480,7 +538,9 @@
         "baseline": 0.22000000000000003,
         "value": 0.42000000000000004,
         "delta": 0.2,
-        "relative": 0.9090909090909091
+        "relative": 0.9090909090909091,
+        "ci_low": 0.13999999999999999,
+        "ci_high": 0.24049999999999963
       },
       {
         "system": "hybrid",
@@ -488,7 +548,9 @@
         "baseline": 0.4833333333333333,
         "value": 0.9666666666666666,
         "delta": 0.4833333333333333,
-        "relative": 1.0
+        "relative": 1.0,
+        "ci_low": 0.33333333333333337,
+        "ci_high": 0.6004166666666663
       },
       {
         "system": "hybrid",
@@ -496,7 +558,9 @@
         "baseline": 0.8,
         "value": 1.0,
         "delta": 0.19999999999999996,
-        "relative": 0.24999999999999994
+        "relative": 0.24999999999999994,
+        "ci_low": 0.0,
+        "ci_high": 0.4
       },
       {
         "system": "hybrid",
@@ -504,7 +568,9 @@
         "baseline": 0.4305555555555555,
         "value": 0.9583333333333334,
         "delta": 0.5277777777777779,
-        "relative": 1.2258064516129037
+        "relative": 1.2258064516129037,
+        "ci_low": 0.37770833333333337,
+        "ci_high": 0.6587499999999996
       }
     ],
     "significance": [
@@ -560,6 +626,7 @@
       }
     }
   },
+  "by_stratum": null,
   "judging": {
     "judge": "mock",
     "fingerprint": "mock:desc=0",
@@ -623,8 +690,249 @@
       "members": {}
     }
   },
+  "pairwise": {
+    "judge": "mock",
+    "k": 5,
+    "swap": true,
+    "comparisons": [
+      {
+        "system_a": "bm25",
+        "system_b": "semantic",
+        "judge": "mock",
+        "fingerprint": "pairwise-mock:margin=0.05:mock:desc=0",
+        "k": 5,
+        "swap": true,
+        "queries": 10,
+        "wins_a": 2,
+        "wins_b": 6,
+        "ties": 2,
+        "inconsistent": 0,
+        "identical": 0,
+        "failed": 0,
+        "skipped_budget": 0,
+        "errors": [],
+        "win_rate_b": 0.75,
+        "win_rate_ci": {
+          "low": 0.409275430310169,
+          "high": 0.928520787247891,
+          "confidence": 0.95
+        },
+        "preference_b": 0.7,
+        "p_value": 0.2890625,
+        "per_query": {
+          "q01": {
+            "winner": "a",
+            "orders": [
+              "A",
+              "B"
+            ],
+            "reason": "DCG 7.43 vs 7.00",
+            "source": "judge"
+          },
+          "q02": {
+            "winner": "a",
+            "orders": [
+              "A",
+              "B"
+            ],
+            "reason": "DCG 6.78 vs 4.89",
+            "source": "judge"
+          },
+          "q03": {
+            "winner": "b",
+            "orders": [
+              "B",
+              "A"
+            ],
+            "reason": "DCG 4.13 vs 3.63",
+            "source": "judge"
+          },
+          "q04": {
+            "winner": "b",
+            "orders": [
+              "B",
+              "A"
+            ],
+            "reason": "DCG 8.13 vs 7.63",
+            "source": "judge"
+          },
+          "q05": {
+            "winner": "tie",
+            "orders": [
+              "tie",
+              "tie"
+            ],
+            "reason": "similar DCG (8.89 vs 8.50)",
+            "source": "judge"
+          },
+          "q06": {
+            "winner": "tie",
+            "orders": [
+              "tie",
+              "tie"
+            ],
+            "reason": "similar DCG (7.00 vs 7.00)",
+            "source": "judge"
+          },
+          "q07": {
+            "winner": "b",
+            "orders": [
+              "B",
+              "A"
+            ],
+            "reason": "DCG 7.00 vs 4.42",
+            "source": "judge"
+          },
+          "q08": {
+            "winner": "b",
+            "orders": [
+              "B",
+              "A"
+            ],
+            "reason": "DCG 8.13 vs 7.00",
+            "source": "judge"
+          },
+          "q09": {
+            "winner": "b",
+            "orders": [
+              "B",
+              "A"
+            ],
+            "reason": "DCG 7.00 vs 0.00",
+            "source": "judge"
+          },
+          "q10": {
+            "winner": "b",
+            "orders": [
+              "B",
+              "A"
+            ],
+            "reason": "DCG 8.13 vs 7.00",
+            "source": "judge"
+          }
+        }
+      },
+      {
+        "system_a": "bm25",
+        "system_b": "hybrid",
+        "judge": "mock",
+        "fingerprint": "pairwise-mock:margin=0.05:mock:desc=0",
+        "k": 5,
+        "swap": true,
+        "queries": 10,
+        "wins_a": 3,
+        "wins_b": 6,
+        "ties": 1,
+        "inconsistent": 0,
+        "identical": 0,
+        "failed": 0,
+        "skipped_budget": 0,
+        "errors": [],
+        "win_rate_b": 0.6666666666666666,
+        "win_rate_ci": {
+          "low": 0.3542021355803963,
+          "high": 0.879416181613089,
+          "confidence": 0.95
+        },
+        "preference_b": 0.65,
+        "p_value": 0.5078125,
+        "per_query": {
+          "q01": {
+            "winner": "a",
+            "orders": [
+              "A",
+              "B"
+            ],
+            "reason": "DCG 7.43 vs 7.00",
+            "source": "judge"
+          },
+          "q02": {
+            "winner": "a",
+            "orders": [
+              "A",
+              "B"
+            ],
+            "reason": "DCG 6.78 vs 5.79",
+            "source": "judge"
+          },
+          "q03": {
+            "winner": "b",
+            "orders": [
+              "B",
+              "A"
+            ],
+            "reason": "DCG 4.13 vs 3.63",
+            "source": "judge"
+          },
+          "q04": {
+            "winner": "b",
+            "orders": [
+              "B",
+              "A"
+            ],
+            "reason": "DCG 8.06 vs 7.63",
+            "source": "judge"
+          },
+          "q05": {
+            "winner": "a",
+            "orders": [
+              "A",
+              "B"
+            ],
+            "reason": "DCG 8.89 vs 7.00",
+            "source": "judge"
+          },
+          "q06": {
+            "winner": "tie",
+            "orders": [
+              "tie",
+              "tie"
+            ],
+            "reason": "similar DCG (7.00 vs 7.00)",
+            "source": "judge"
+          },
+          "q07": {
+            "winner": "b",
+            "orders": [
+              "B",
+              "A"
+            ],
+            "reason": "DCG 7.00 vs 4.42",
+            "source": "judge"
+          },
+          "q08": {
+            "winner": "b",
+            "orders": [
+              "B",
+              "A"
+            ],
+            "reason": "DCG 8.13 vs 7.00",
+            "source": "judge"
+          },
+          "q09": {
+            "winner": "b",
+            "orders": [
+              "B",
+              "A"
+            ],
+            "reason": "DCG 7.00 vs 0.00",
+            "source": "judge"
+          },
+          "q10": {
+            "winner": "b",
+            "orders": [
+              "B",
+              "A"
+            ],
+            "reason": "DCG 8.06 vs 7.00",
+            "source": "judge"
+          }
+        }
+      }
+    ]
+  },
   "cost": {
-    "judgments": 49,
+    "judgments": 89,
     "cache_hits": 0,
     "requests": 0,
     "prompt_tokens": 0,

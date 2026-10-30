@@ -10,7 +10,7 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from llm_search_eval.agreement import gold_agreement, inter_judge_agreement
 from llm_search_eval.errors import ConfigError, JudgeError
@@ -18,8 +18,14 @@ from llm_search_eval.judges.base import Judge, Vote
 from llm_search_eval.judges.cache import JudgmentCache, cache_key
 from llm_search_eval.judges.panel import JudgePanel
 from llm_search_eval.metrics import DEFAULT_METRICS, Metric, parse_metrics
-from llm_search_eval.models import Dataset, Qrels, Run
+from llm_search_eval.models import Dataset, Qrels, Query, Run
+from llm_search_eval.sampling import SampleResult, query_stratum, sample_queries
+from llm_search_eval.stats import bootstrap_ci, paired_bootstrap_ci
 from llm_search_eval.usage import BudgetExceededError, CostTracker
+
+if TYPE_CHECKING:
+    from llm_search_eval.judges.pairwise import PairwiseJudge
+    from llm_search_eval.pairwise import PairwiseCache
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +46,10 @@ class EvaluationConfig:
     primary_metric: str | None = None
     permutations: int = 10_000
     seed: int = 13
+    #: Bootstrap resamples for confidence intervals; 0 turns intervals off.
+    bootstrap: int = 1000
+    #: Confidence level of the bootstrap intervals.
+    confidence: float = 0.95
     concurrency: int = 4
     title: str = "Search evaluation report"
     #: Also judge pairs that have gold labels, to measure judge versus gold agreement.
@@ -49,6 +59,19 @@ class EvaluationConfig:
     calibration_sample: int | None = None
     #: Store rankings, labels, and product titles in the report for the HTML dashboard.
     include_details: bool = True
+    #: Evaluate a random sample of the queries: a count, or a fraction in (0, 1].
+    sample_size: int | float | None = None
+    #: Query field (``lang`` or an extra column) for stratified sampling and a
+    #: per-group breakdown of the primary metric.
+    stratify_by: str | None = None
+    #: Smallest number of queries drawn from each group when sampling.
+    min_per_stratum: int = 1
+    #: Results per system shown to the pairwise judge.
+    pairwise_k: int = 5
+    #: Judge each query in both orders to cancel position bias.
+    pairwise_swap: bool = True
+    #: ``(system_a, system_b)`` pairs to compare; default: each system vs the baseline.
+    pairwise_pairs: Sequence[tuple[str, str]] | None = None
 
     def parsed_metrics(self) -> list[Metric]:
         return parse_metrics(self.metrics)
@@ -82,6 +105,14 @@ class EvaluationConfig:
             raise ConfigError("permutations must be zero or positive")
         if self.calibration_sample is not None and self.calibration_sample < 1:
             raise ConfigError("calibration_sample must be a positive integer")
+        if self.min_per_stratum < 0:
+            raise ConfigError("min_per_stratum must not be negative")
+        if self.pairwise_k < 1:
+            raise ConfigError("pairwise_k must be a positive integer")
+        if self.bootstrap < 0:
+            raise ConfigError("bootstrap must be zero or positive")
+        if not 0.0 < self.confidence < 1.0:
+            raise ConfigError("confidence must be between 0 and 1, for example 0.95")
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +188,26 @@ def _calibration_pairs(dataset: Dataset, sample: int | None, seed: int) -> list[
     return pairs
 
 
+def pending_pairs(dataset: Dataset, runs: Sequence[Run], depth: int) -> list[tuple[str, str]]:
+    """``(query_id, product_id)`` pairs in the runs' top ``depth`` that have no gold label.
+
+    Each pair appears once, in run order. Pairs whose product is missing from
+    the catalog are included; callers decide what to do with them.
+    """
+    pending: dict[tuple[str, str], None] = {}  # ordered set
+    for run in runs:
+        for qid in dataset.queries:
+            for pid in run.ranking(qid, depth):
+                if (qid, pid) not in pending and dataset.gold_label(qid, pid) is None:
+                    pending[(qid, pid)] = None
+    return list(pending)
+
+
+def calibration_pairs(dataset: Dataset, sample: int | None, seed: int) -> list[tuple[str, str]]:
+    """Gold-labeled pairs a calibrating judge grades as well."""
+    return _calibration_pairs(dataset, sample, seed)
+
+
 def build_labels(
     dataset: Dataset,
     runs: Sequence[Run],
@@ -178,13 +229,7 @@ def build_labels(
     """
     stats = LabelStats(judge=judge.label if judge else None)
     labels: Qrels = {qid: dict(rels) for qid, rels in dataset.qrels.items()}
-    pending: dict[tuple[str, str], None] = {}  # ordered set
-    for run in runs:
-        for qid in dataset.queries:
-            for pid in run.ranking(qid, depth):
-                if (qid, pid) in pending or dataset.gold_label(qid, pid) is not None:
-                    continue
-                pending[(qid, pid)] = None
+    pending = pending_pairs(dataset, runs, depth)
     stats.gold_used = sum(
         1
         for qid in dataset.queries
@@ -376,6 +421,10 @@ def score_run(
     depth: int,
     threshold: int,
     gain: str,
+    *,
+    bootstrap: int = 0,
+    confidence: float = 0.95,
+    seed: int = 13,
 ) -> dict[str, Any]:
     per_query: dict[str, dict[str, float | None]] = {}
     slots = labeled = unknown = 0
@@ -391,10 +440,15 @@ def score_run(
     aggregate = {}
     for m in metrics:
         values = [x for v in per_query.values() if (x := v[m.label]) is not None]
-        aggregate[m.label] = {
+        entry: dict[str, Any] = {
             "mean": statistics.fmean(values) if values else None,
             "n": len(values),
         }
+        if bootstrap:
+            ci = bootstrap_ci(values, confidence=confidence, resamples=bootstrap, seed=seed)
+            entry["ci_low"] = None if ci is None else ci.low
+            entry["ci_high"] = None if ci is None else ci.high
+        aggregate[m.label] = entry
     return {
         "name": run.name,
         "metrics": aggregate,
@@ -433,6 +487,16 @@ def paired_randomization_test(
     return (extreme + 1) / (permutations + 1)
 
 
+def _paired(system: dict[str, Any], base: dict[str, Any], metric: str) -> list[tuple[float, float]]:
+    """Per-query values of ``metric`` for queries where both systems have one."""
+    return [
+        (system["per_query"][q][metric], base["per_query"][q][metric])
+        for q in base["per_query"]
+        if system["per_query"].get(q, {}).get(metric) is not None
+        and base["per_query"][q][metric] is not None
+    ]
+
+
 def compare_systems(
     systems: Sequence[dict[str, Any]],
     metrics: Sequence[Metric],
@@ -440,6 +504,9 @@ def compare_systems(
     primary: Metric,
     permutations: int,
     seed: int,
+    *,
+    bootstrap: int = 0,
+    confidence: float = 0.95,
 ) -> dict[str, Any]:
     base = next(s for s in systems if s["name"] == baseline)
     deltas = []
@@ -452,22 +519,27 @@ def compare_systems(
             v = system["metrics"][m.label]["mean"]
             delta = None if b is None or v is None else v - b
             relative = None if delta is None or not b else delta / b
-            deltas.append(
-                {
-                    "system": system["name"],
-                    "metric": m.label,
-                    "baseline": b,
-                    "value": v,
-                    "delta": delta,
-                    "relative": relative,
-                }
-            )
-        pairs = [
-            (system["per_query"][q][primary.label], base["per_query"][q][primary.label])
-            for q in base["per_query"]
-            if system["per_query"][q][primary.label] is not None
-            and base["per_query"][q][primary.label] is not None
-        ]
+            row: dict[str, Any] = {
+                "system": system["name"],
+                "metric": m.label,
+                "baseline": b,
+                "value": v,
+                "delta": delta,
+                "relative": relative,
+            }
+            if bootstrap:
+                paired = _paired(system, base, m.label)
+                ci = paired_bootstrap_ci(
+                    [x for x, _ in paired],
+                    [y for _, y in paired],
+                    confidence=confidence,
+                    resamples=bootstrap,
+                    seed=seed,
+                )
+                row["ci_low"] = None if ci is None else ci.low
+                row["ci_high"] = None if ci is None else ci.high
+            deltas.append(row)
+        pairs = _paired(system, base, primary.label)
         wins = sum(1 for x, y in pairs if x > y + 1e-9)
         losses = sum(1 for x, y in pairs if y > x + 1e-9)
         tests.append(
@@ -498,24 +570,50 @@ def compare_systems(
     }
 
 
-def _by_language(
-    dataset: Dataset, systems: Sequence[dict[str, Any]], primary: Metric
+def _by_group(
+    dataset: Dataset,
+    systems: Sequence[dict[str, Any]],
+    primary: Metric,
+    group: Callable[[Query], str],
 ) -> dict[str, dict[str, dict[str, Any]]]:
-    langs = sorted({q.lang or "und" for q in dataset.queries.values()})
+    keys = sorted({group(q) for q in dataset.queries.values()})
     out: dict[str, dict[str, dict[str, Any]]] = {}
     for system in systems:
         out[system["name"]] = {}
-        for lang in langs:
+        for key in keys:
             values: list[float] = [
                 system["per_query"][qid][primary.label]
                 for qid, q in dataset.queries.items()
-                if (q.lang or "und") == lang and system["per_query"][qid][primary.label] is not None
+                if group(q) == key and system["per_query"][qid][primary.label] is not None
             ]
-            out[system["name"]][lang] = {
+            out[system["name"]][key] = {
                 "mean": statistics.fmean(values) if values else None,
                 "n": len(values),
             }
     return out
+
+
+def _by_language(
+    dataset: Dataset, systems: Sequence[dict[str, Any]], primary: Metric
+) -> dict[str, dict[str, dict[str, Any]]]:
+    return _by_group(dataset, systems, primary, lambda q: q.lang or "und")
+
+
+def apply_sampling(
+    dataset: Dataset, config: EvaluationConfig
+) -> tuple[Dataset, SampleResult | None]:
+    """Restrict ``dataset`` to the configured query sample (no-op without one)."""
+    if config.sample_size is None:
+        return dataset, None
+    result = sample_queries(
+        dataset.queries,
+        config.sample_size,
+        stratify_by=config.stratify_by,
+        seed=config.seed,
+        min_per_stratum=config.min_per_stratum,
+    )
+    qrels = {qid: rels for qid, rels in dataset.qrels.items() if qid in result.queries}
+    return Dataset(result.queries, dataset.products, qrels), result
 
 
 def evaluate(
@@ -526,11 +624,15 @@ def evaluate(
     cache: JudgmentCache | None = None,
     progress: ProgressFn | None = None,
     tracker: CostTracker | None = None,
+    pairwise_judge: PairwiseJudge | None = None,
+    pairwise_cache: PairwiseCache | None = None,
 ) -> EvaluationReport:
     """Score every run against gold labels, filling gaps with ``judge`` when given.
 
     Pass a :class:`~llm_search_eval.usage.CostTracker` to price token usage and
     enforce a budget. Pairs left unjudged because of the budget count as unlabeled.
+    With ``pairwise_judge``, systems are also compared head to head (see
+    :mod:`llm_search_eval.pairwise`); that shares the tracker and budget.
     """
     from llm_search_eval import __version__
 
@@ -550,6 +652,8 @@ def evaluate(
     depth = config.resolved_depth()
     primary = config.resolved_primary()
 
+    population = len(dataset.queries)
+    dataset, sampling = apply_sampling(dataset, config)
     tracker = tracker or CostTracker()
     labels, stats, judged = build_labels(
         dataset,
@@ -565,12 +669,56 @@ def evaluate(
         seed=config.seed,
     )
     systems = [
-        score_run(run, dataset, labels, metrics, depth, config.threshold, config.gain)
+        score_run(
+            run,
+            dataset,
+            labels,
+            metrics,
+            depth,
+            config.threshold,
+            config.gain,
+            bootstrap=config.bootstrap,
+            confidence=config.confidence,
+            seed=config.seed,
+        )
         for run in runs
     ]
     comparison = compare_systems(
-        systems, metrics, baseline, primary, config.permutations, config.seed
+        systems,
+        metrics,
+        baseline,
+        primary,
+        config.permutations,
+        config.seed,
+        bootstrap=config.bootstrap,
+        confidence=config.confidence,
     )
+    pairwise = None
+    if pairwise_judge is not None:
+        from llm_search_eval.pairwise import PairwiseCache, compare_pair, resolve_pairs
+
+        by_name = {run.name: run for run in runs}
+        shared_cache = PairwiseCache() if pairwise_cache is None else pairwise_cache
+        pairwise = {
+            "judge": pairwise_judge.label,
+            "k": config.pairwise_k,
+            "swap": config.pairwise_swap,
+            "comparisons": [
+                compare_pair(
+                    dataset,
+                    by_name[a],
+                    by_name[b],
+                    pairwise_judge,
+                    k=config.pairwise_k,
+                    swap=config.pairwise_swap,
+                    concurrency=config.concurrency,
+                    tracker=tracker,
+                    cache=shared_cache,
+                    confidence=config.confidence,
+                )
+                for a, b in resolve_pairs(names, baseline, list(config.pairwise_pairs or []))
+            ],
+        }
     langs = Counter(q.lang or "und" for q in dataset.queries.values())
     data = {
         "tool": {"name": "llm-search-eval", "version": __version__},
@@ -585,20 +733,35 @@ def evaluate(
             "baseline": baseline,
             "permutations": config.permutations,
             "seed": config.seed,
+            "bootstrap": config.bootstrap,
+            "confidence": config.confidence,
             "calibrate": config.calibrate,
             "calibration_sample": config.calibration_sample,
+            "sample_size": config.sample_size,
+            "stratify_by": config.stratify_by,
         },
         "dataset": {
             "queries": len(dataset.queries),
             "products": len(dataset.products),
             "gold_labels": sum(len(v) for v in dataset.qrels.values()),
             "languages": dict(sorted(langs.items())),
+            "population": population,
+            "sampling": None if sampling is None else sampling.to_dict(),
         },
         "labels": stats.to_dict(),
         "systems": systems,
         "comparison": comparison,
         "by_language": _by_language(dataset, systems, primary),
+        "by_stratum": None
+        if not config.stratify_by or config.stratify_by in {"lang", "language"}
+        else {
+            "field": config.stratify_by,
+            "systems": _by_group(
+                dataset, systems, primary, lambda q: query_stratum(q, config.stratify_by or "")
+            ),
+        },
         "judging": judge_analysis(judged, judge, config.threshold),
+        "pairwise": pairwise,
         "cost": tracker.to_dict(),
     }
     if config.include_details:

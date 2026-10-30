@@ -33,6 +33,7 @@ _TEMPLATE = """<!DOCTYPE html>
   <a href="#summary">Metrics</a>
   <a href="#comparison">Comparison</a>
   <a href="#languages">Languages</a>
+  <a href="#pairwise">Pairwise</a>
   <a href="#judging">Judges</a>
   <a href="#cost">Cost</a>
   <a href="#queries">Queries</a>
@@ -45,6 +46,7 @@ _TEMPLATE = """<!DOCTYPE html>
     <div class="row" style="margin-top:14px"><label for="metric-select">Chart</label>
       <select id="metric-select"></select></div>
     <div id="metric-chart"></div>
+    <p class="note" id="summary-note"></p>
   </section>
   <section id="comparison">
     <h2>System comparison</h2>
@@ -59,6 +61,19 @@ _TEMPLATE = """<!DOCTYPE html>
   </section>
   <section id="languages">
     <h2>Primary metric by query language</h2><div id="language-table"></div>
+  </section>
+  <section id="strata">
+    <h2 id="strata-title">Primary metric by group</h2><div id="strata-table"></div>
+  </section>
+  <section id="pairwise">
+    <h2>Pairwise preference</h2>
+    <p class="note" id="pairwise-note"></p>
+    <div id="pairwise-table"></div>
+    <div id="pairwise-bars"></div>
+    <div class="row" style="margin-top:14px">
+      <label for="pairwise-select">Per query</label><select id="pairwise-select"></select>
+    </div>
+    <div id="pairwise-queries"></div>
   </section>
   <section id="judging">
     <h2>Judges</h2>

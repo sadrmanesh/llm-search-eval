@@ -89,3 +89,19 @@ def test_dashboard_renders_without_judge_or_details(tiny_dataset):
     data = _embedded(render_html(report))
     assert "details" not in data
     assert data["judging"] is None
+
+
+def test_dashboard_has_interval_pairwise_and_strata_views(example_dataset, example_runs):
+    from llm_search_eval import EvaluationConfig, evaluate
+    from llm_search_eval.html_report import render_html
+    from llm_search_eval.judges.pairwise import MockPairwiseJudge
+
+    report = evaluate(
+        example_dataset,
+        example_runs,
+        EvaluationConfig(permutations=50, bootstrap=100),
+        pairwise_judge=MockPairwiseJudge(),
+    )
+    page = render_html(report)
+    for marker in ('id="pairwise"', 'id="strata"', 'id="summary-note"', "renderPairwise", "ci_low"):
+        assert marker in page

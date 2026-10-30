@@ -31,6 +31,18 @@ def _table(headers: Sequence[str], rows: Iterable[Sequence[str]], align: str = "
     return lines
 
 
+def _ci(entry: dict[str, Any], digits: int = 4, signed: bool = False) -> str:
+    low, high = entry.get("ci_low"), entry.get("ci_high")
+    if low is None or high is None:
+        return "n/a"
+    fmt = _signed if signed else _fmt
+    return f"[{fmt(low, digits)}, {fmt(high, digits)}]"
+
+
+def _confidence_label(cfg: dict[str, Any]) -> str:
+    return f"{round(float(cfg.get('confidence', 0.95)) * 100):g}% CI"
+
+
 def _escape(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
 
@@ -67,6 +79,7 @@ def render_markdown(report: EvaluationReport | dict[str, Any]) -> str:
     langs = ", ".join(f"{k}: {v}" for k, v in ds["languages"].items())
     out += [
         f"- **Queries:** {ds['queries']} ({langs})",
+        *_sampling_line(ds.get("sampling")),
         f"- **Products:** {ds['products']}",
         f"- **Gold labels:** {ds['gold_labels']}",
         f"- **Judge:** {labels['judge'] or 'none (unlabeled results count as not relevant)'}",
@@ -82,6 +95,30 @@ def render_markdown(report: EvaluationReport | dict[str, Any]) -> str:
     if len(comp["ranking"]) > 1:
         leader = comp["ranking"][0]
         out += [f"Best system by `{primary}`: **`{_escape(leader)}`**.", ""]
+    with_ci = cfg.get("bootstrap") and any(
+        "ci_low" in s["metrics"][primary] for s in data["systems"]
+    )
+    if with_ci:
+        label = _confidence_label(cfg)
+        out += [f"## Confidence intervals for `{primary}`", ""]
+        out += _table(
+            ["System", "Mean", label, "Queries"],
+            (
+                [
+                    f"`{_escape(s['name'])}`",
+                    _fmt(s["metrics"][primary]["mean"]),
+                    _ci(s["metrics"][primary]),
+                    str(s["metrics"][primary]["n"]),
+                ]
+                for s in data["systems"]
+            ),
+        )
+        out += [
+            "",
+            f"Percentile bootstrap over queries ({cfg['bootstrap']} resamples, seed "
+            f"{cfg['seed']}). Narrow intervals need more queries, not more judgments.",
+            "",
+        ]
 
     if comp["significance"]:
         out += [f"## Comparison against `{_escape(cfg['baseline'])}`", ""]
@@ -92,26 +129,40 @@ def render_markdown(report: EvaluationReport | dict[str, Any]) -> str:
             )
             p = t["p_value"]
             flag = "" if p is None else (" (significant)" if p < 0.05 else "")
-            rows.append(
-                [
-                    f"`{_escape(t['system'])}`",
-                    _signed(d["delta"]),
-                    _pct(d["relative"]),
-                    f"{t['wins']} / {t['ties']} / {t['losses']}",
-                    ("n/a" if p is None else f"{p:.4f}") + flag,
-                ]
-            )
-        out += _table(["System", f"Δ {primary}", "Relative", "Win / tie / loss", "p-value"], rows)
+            row = [f"`{_escape(t['system'])}`", _signed(d["delta"])]
+            if with_ci:
+                row.append(_ci(d, signed=True))
+            row += [
+                _pct(d["relative"]),
+                f"{t['wins']} / {t['ties']} / {t['losses']}",
+                ("n/a" if p is None else f"{p:.4f}") + flag,
+            ]
+            rows.append(row)
+        headers = ["System", f"Δ {primary}"]
+        if with_ci:
+            headers.append(f"Δ {_confidence_label(cfg)}")
+        headers += ["Relative", "Win / tie / loss", "p-value"]
+        out += _table(headers, rows)
         out += [
             "",
             "p-values come from a two-sided paired randomization test over per-query "
             f"`{primary}` ({cfg['permutations']} permutations, seed {cfg['seed']}).",
+            *(
+                [
+                    "An interval for Δ that excludes zero agrees with a significant p-value "
+                    "in almost every case; when they disagree, the effect is borderline."
+                ]
+                if with_ci
+                else []
+            ),
             "",
             "### All metric deltas",
             "",
         ]
         out += _table(
-            ["System", "Metric", "Baseline", "System value", "Δ", "Relative"],
+            ["System", "Metric", "Baseline", "System value", "Δ"]
+            + ([_confidence_label(cfg)] if with_ci else [])
+            + ["Relative"],
             (
                 [
                     f"`{_escape(d['system'])}`",
@@ -119,11 +170,12 @@ def render_markdown(report: EvaluationReport | dict[str, Any]) -> str:
                     _fmt(d["baseline"]),
                     _fmt(d["value"]),
                     _signed(d["delta"]),
+                    *([_ci(d, signed=True)] if with_ci else []),
                     _pct(d["relative"]),
                 ]
                 for d in comp["deltas"]
             ),
-            align="llrrrr",
+            align="llrrr" + ("r" if with_ci else "") + "r",
         )
         out.append("")
 
@@ -137,6 +189,19 @@ def render_markdown(report: EvaluationReport | dict[str, Any]) -> str:
                 [f"`{_escape(name)}`"]
                 + [f"{_fmt(v[lang]['mean'])} (n={v[lang]['n']})" for lang in lang_keys]
                 for name, v in by_lang.items()
+            ),
+        )
+        out.append("")
+
+    stratum = data.get("by_stratum")
+    if stratum:
+        groups = sorted({g for v in stratum["systems"].values() for g in v})
+        out += [f"## `{primary}` by `{_escape(stratum['field'])}`", ""]
+        out += _table(
+            ["System", *(_escape(g) for g in groups)],
+            (
+                [f"`{_escape(name)}`"] + [f"{_fmt(v[g]['mean'])} (n={v[g]['n']})" for g in groups]
+                for name, v in stratum["systems"].items()
             ),
         )
         out.append("")
@@ -170,6 +235,7 @@ def render_markdown(report: EvaluationReport | dict[str, Any]) -> str:
             "",
         ]
     out += _judging_section(data.get("judging"))
+    out += _pairwise_section(data.get("pairwise"), cfg)
     out += _cost_section(data.get("cost"))
     out += [
         "---",
@@ -177,6 +243,22 @@ def render_markdown(report: EvaluationReport | dict[str, Any]) -> str:
         "",
     ]
     return "\n".join(out)
+
+
+def _sampling_line(sampling: dict[str, Any] | None) -> list[str]:
+    if not sampling:
+        return []
+    line = (
+        f"- **Sample:** {sampling['sampled']} of {sampling['population']} queries "
+        f"(seed {sampling['seed']}"
+    )
+    if sampling.get("stratify_by"):
+        parts = ", ".join(
+            f"{_escape(name)}: {s['sampled']}/{s['population']}"
+            for name, s in sampling["strata"].items()
+        )
+        line += f", stratified by `{_escape(sampling['stratify_by'])}`: {parts}"
+    return [line + ")"]
 
 
 def _ratio(value: float | None) -> str:
@@ -248,6 +330,62 @@ def _judging_section(judging: dict[str, Any] | None) -> list[str]:
             "than the gold labels.",
             "",
         ]
+    return out
+
+
+def _pairwise_section(pairwise: dict[str, Any] | None, cfg: dict[str, Any]) -> list[str]:
+    if not pairwise or not pairwise.get("comparisons"):
+        return []
+    order = "both orders, a win needs both to agree" if pairwise["swap"] else "one order"
+    out = [
+        "## Pairwise preference",
+        "",
+        f"Judge `{_escape(pairwise['judge'])}` compared the top {pairwise['k']} results of "
+        f"two systems side by side for each query ({order}).",
+        "",
+    ]
+    rows = []
+    for c in pairwise["comparisons"]:
+        ci = c.get("win_rate_ci")
+        rate = "n/a" if c["win_rate_b"] is None else f"{c['win_rate_b']:.1%}"
+        if ci:
+            rate += f" [{ci['low']:.1%}, {ci['high']:.1%}]"
+        p = c["p_value"]
+        flag = "" if p is None else (" (significant)" if p < 0.05 else "")
+        rows.append(
+            [
+                f"`{_escape(c['system_b'])}` vs `{_escape(c['system_a'])}`",
+                str(c["wins_b"]),
+                str(c["ties"]),
+                str(c["wins_a"]),
+                rate,
+                ("n/a" if p is None else f"{p:.4f}") + flag,
+                str(c["inconsistent"]),
+            ]
+        )
+    out += _table(
+        [
+            "B vs A",
+            "B wins",
+            "Ties",
+            "A wins",
+            f"B win rate ({_confidence_label(cfg)})",
+            "p-value",
+            "Inconsistent",
+        ],
+        rows,
+    )
+    out += [
+        "",
+        "Win rate counts decided queries only (ties excluded), with a Wilson interval. "
+        "p-values come from an exact sign test. Inconsistent queries got opposite "
+        "winners in the two orders and count as ties.",
+    ]
+    failed = sum(c["failed"] for c in pairwise["comparisons"])
+    skipped = sum(c["skipped_budget"] for c in pairwise["comparisons"])
+    if failed or skipped:
+        out.append(f"Not compared: {failed} failed, {skipped} skipped by the budget.")
+    out.append("")
     return out
 
 

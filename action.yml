@@ -49,8 +49,24 @@ inputs:
     description: Stop judging once this many USD have been spent.
     required: false
     default: ""
+  max-tokens:
+    description: Stop judging once input plus output tokens reach this many.
+    required: false
+    default: ""
   max-judgments:
     description: Stop after this many fresh judgments.
+    required: false
+    default: ""
+  pairwise-judge:
+    description: >-
+      Pairwise judge spec, for example `openai=gpt-4o-mini` or `mock`, to compare
+      systems head to head. Empty turns pairwise comparison off.
+    required: false
+    default: ""
+  pairwise:
+    description: >-
+      Pairs to compare, one per line, as SYSTEM_A:SYSTEM_B. Defaults to each
+      system against the baseline.
     required: false
     default: ""
   metrics:
@@ -69,6 +85,24 @@ inputs:
     description: Rounds for the paired randomization test.
     required: false
     default: "10000"
+  bootstrap:
+    description: Bootstrap resamples for confidence intervals; 0 turns them off.
+    required: false
+    default: "1000"
+  confidence:
+    description: Confidence level of the intervals.
+    required: false
+    default: "0.95"
+  sample:
+    description: >-
+      Evaluate a random sample of the queries: a count (200), a fraction (0.25)
+      or a percentage (25%). Empty uses every query.
+    required: false
+    default: ""
+  stratify:
+    description: Query field to stratify the sample by (for example lang or segment).
+    required: false
+    default: ""
   title:
     description: Report title.
     required: false
@@ -111,13 +145,30 @@ inputs:
     description: Fail the step when a gate check fails.
     required: false
     default: "true"
+  comment:
+    description: >-
+      On pull request events, post the gate result and report as a pull request
+      comment, and update that same comment on later runs. Needs
+      `pull-requests: write`; without it the step only warns.
+    required: false
+    default: "true"
+  comment-id:
+    description: >-
+      Identity of the comment. Jobs with different ids keep separate comments on
+      the same pull request.
+    required: false
+    default: report
+  github-token:
+    description: Token used to post the comment.
+    required: false
+    default: ${{ github.token }}
   python-version:
     description: Python version to set up.
     required: false
     default: "3.12"
   package:
     description: >-
-      pip requirement to install, for example `llm-search-eval==0.2.0`. Defaults
+      pip requirement to install, for example `llm-search-eval==0.3.0`. Defaults
       to the version of the action itself.
     required: false
     default: ""
@@ -135,6 +186,9 @@ outputs:
   passed:
     description: "`true` when every gate check passed or no gate was configured."
     value: ${{ steps.gate.outputs.passed }}
+  comment-url:
+    description: URL of the pull request comment, when one was posted.
+    value: ${{ steps.comment.outputs.comment-url }}
 
 runs:
   using: composite
@@ -167,7 +221,14 @@ runs:
         IN_CACHE: ${{ inputs.cache }}
         IN_PRICES: ${{ inputs.prices }}
         IN_MAX_COST: ${{ inputs.max-cost }}
+        IN_MAX_TOKENS: ${{ inputs.max-tokens }}
         IN_MAX_JUDGMENTS: ${{ inputs.max-judgments }}
+        IN_PAIRWISE_JUDGE: ${{ inputs.pairwise-judge }}
+        IN_PAIRWISE: ${{ inputs.pairwise }}
+        IN_BOOTSTRAP: ${{ inputs.bootstrap }}
+        IN_CONFIDENCE: ${{ inputs.confidence }}
+        IN_SAMPLE: ${{ inputs.sample }}
+        IN_STRATIFY: ${{ inputs.stratify }}
         IN_METRICS: ${{ inputs.metrics }}
         IN_PRIMARY: ${{ inputs.primary }}
         IN_BASELINE: ${{ inputs.baseline }}
@@ -179,7 +240,8 @@ runs:
         set -euo pipefail
         args=(run --queries "$IN_QUERIES" --products "$IN_PRODUCTS" --output-dir "$IN_OUTPUT_DIR"
               --format md,json,html --title "$IN_TITLE" --permutations "$IN_PERMUTATIONS"
-              --aggregate "$IN_AGGREGATE" --quiet)
+              --aggregate "$IN_AGGREGATE" --bootstrap "$IN_BOOTSTRAP" --confidence "$IN_CONFIDENCE"
+              --quiet)
         add_lines() {  # add_lines FLAG TEXT: one argument per non-empty line
           local flag="$1" line
           while IFS= read -r line; do
@@ -191,11 +253,16 @@ runs:
         add_lines --system "$IN_SYSTEMS"
         add_lines --judge "$IN_JUDGES"
         add_lines --price "$IN_PRICES"
+        add_lines --pairwise "$IN_PAIRWISE"
         add_lines "" "$IN_ARGS"
         [ -n "$IN_QRELS" ] && args+=(--qrels "$IN_QRELS")
         [ -n "$IN_CACHE" ] && args+=(--cache "$IN_CACHE")
         [ -n "$IN_MAX_COST" ] && args+=(--max-cost "$IN_MAX_COST")
+        [ -n "$IN_MAX_TOKENS" ] && args+=(--max-tokens "$IN_MAX_TOKENS")
         [ -n "$IN_MAX_JUDGMENTS" ] && args+=(--max-judgments "$IN_MAX_JUDGMENTS")
+        [ -n "$IN_PAIRWISE_JUDGE" ] && args+=(--pairwise-judge "$IN_PAIRWISE_JUDGE")
+        [ -n "$IN_SAMPLE" ] && args+=(--sample "$IN_SAMPLE")
+        [ -n "$IN_STRATIFY" ] && args+=(--stratify "$IN_STRATIFY")
         [ -n "$IN_METRICS" ] && args+=(--metrics "$IN_METRICS")
         [ -n "$IN_PRIMARY" ] && args+=(--primary "$IN_PRIMARY")
         [ -n "$IN_BASELINE" ] && args+=(--baseline "$IN_BASELINE")
@@ -262,6 +329,26 @@ runs:
           echo
           echo "The interactive dashboard is \`$REPORT_DIR/report.html\`; upload it with actions/upload-artifact to share it."
         } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Pull request comment
+      id: comment
+      if: >-
+        always() && steps.evaluate.outcome == 'success' && inputs.comment == 'true' &&
+        (github.event_name == 'pull_request' || github.event_name == 'pull_request_target')
+      shell: bash
+      env:
+        REPORT_DIR: ${{ steps.evaluate.outputs.report-dir }}
+        IN_COMMENT_ID: ${{ inputs.comment-id }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -uo pipefail
+        if ! out="$(llm-search-eval comment "$REPORT_DIR/gate.md" "$REPORT_DIR/report.md" --id "$IN_COMMENT_ID")"; then
+          echo "::warning title=Pull request comment::Could not post the report comment; see the log."
+          exit 0
+        fi
+        echo "$out"
+        url="${out##* }"
+        case "$url" in http*) echo "comment-url=$url" >> "$GITHUB_OUTPUT" ;; esac
 
     - name: Fail on regression
       if: steps.gate.outputs.passed == 'false' && inputs.fail-on-regression == 'true'

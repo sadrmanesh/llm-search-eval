@@ -1,5 +1,8 @@
 # Live search connectors
 
+Supported backends: Elasticsearch, OpenSearch, Algolia, Meilisearch, Typesense,
+and any HTTP API that answers with JSON.
+
 `llm-search-eval fetch` sends every query to a running search backend and saves
 the ranked product ids as a run file that `run` can score. Requests go over
 plain HTTP with the standard library, so no extra package is needed.
@@ -50,6 +53,60 @@ llm-search-eval fetch --backend algolia --index products \
 
 Product ids come from `objectID` unless `--id-field` names another attribute.
 
+## Meilisearch
+
+```bash
+export MEILI_API_KEY=...     # a search key; MEILISEARCH_API_KEY also works
+llm-search-eval fetch --backend meilisearch --url http://localhost:7700 --index products \
+  --queries eval/queries.jsonl -k 20 --params '{"filter": "in_stock = true"}' \
+  -o runs/meili.jsonl
+```
+
+The URL defaults to `MEILI_URL` and then `http://localhost:7700`. Product ids
+come from the `id` attribute unless `--id-field` names another one. `--params`
+is merged into the search request, so filters, `attributesToSearchOn`, or a
+`hybrid` block for semantic search can be evaluated as they are served.
+
+## Typesense
+
+```bash
+export TYPESENSE_API_KEY=...
+llm-search-eval fetch --backend typesense --url http://localhost:8108 --index products \
+  --query-by title,brand,description --queries eval/queries.jsonl -k 20 \
+  -o runs/typesense.jsonl
+```
+
+`--index` is the collection name, and `--query-by` lists the fields to search
+(default `title,description`). The URL defaults to `TYPESENSE_URL` and then
+`http://localhost:8108`. Each query is sent through the multi search endpoint;
+Typesense returns at most 250 hits per page, so `-k` above 250 is rejected.
+Extra search parameters such as `filter_by` or `sort_by` go in `--params`.
+
+## Any HTTP/JSON search API
+
+Internal search services rarely speak a standard protocol. The `http` backend
+describes the request and the response without code:
+
+```bash
+export SEARCH_TOKEN=...
+llm-search-eval fetch --backend http \
+  --url 'https://search.internal/v2/search?q={{query}}&size={{k}}&lang={{lang}}' \
+  --header 'Authorization:Bearer ${SEARCH_TOKEN}' \
+  --results-path data.hits --id-path product.sku \
+  --queries eval/queries.jsonl -k 20 -o runs/internal.jsonl
+```
+
+- `--url` is the full request URL. Placeholders in it are URL-encoded.
+- `--method POST` (or `PUT`) with `--body request.json` sends a JSON body
+  template with the same placeholders as the Elasticsearch template.
+- `--header NAME:VALUE` is repeatable; `${NAME}` in a value is read from the
+  environment, and a missing variable is an error, so secrets never end up in
+  shell history or in an empty header.
+- `--results-path` is the dotted path to the list of results in the response
+  (default `results`); numbers select list items, as in `data.0.hits`.
+- `--id-path` is the dotted path to the product id inside one result
+  (default `id`).
+
 ## Options
 
 | Option | Description |
@@ -88,6 +145,8 @@ connector = ElasticsearchConnector(
 )
 ```
 
-For Algolia, pass an `algoliasearch.search.client.SearchClientSync`. Custom
+For Algolia, pass an `algoliasearch.search.client.SearchClientSync`.
+`MeilisearchConnector`, `TypesenseConnector` and `HTTPJSONConnector` use only
+the standard library. Custom
 backends only need to subclass `SearchConnector` and implement
 `search(query, k) -> list[str]`.

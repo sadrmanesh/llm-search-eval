@@ -41,6 +41,40 @@ and the console show how many pairs were skipped. With `--concurrency` above
 one, requests that were already in flight can finish after the limit, so keep a
 small margin.
 
+## Estimate before you run
+
+`llm-search-eval estimate` takes the same arguments as `run`, works out which
+pairs still need a judge (after gold labels and the cache), and prints the
+expected number of calls, tokens and cost without calling any model:
+
+```console
+$ llm-search-eval estimate -q queries.jsonl -p products.jsonl --qrels qrels.csv \
+    -s bm25=runs/bm25.jsonl -s hybrid=runs/hybrid.trec \
+    --judge openai=gpt-4o-mini --pairwise-judge openai=gpt-4o-mini \
+    --price gpt-4o-mini=0.15,0.60 --max-cost 0.01
+queries: 10
+result pairs: 47 (29 gold, 0 unknown products)
+pairs to judge: 18 (0 already cached)
+pairwise comparisons: 10 (0 identical), judge calls: 20 (0 cached)
+  gpt-4o-mini: 38 calls, 16762 in + 1520 out tokens, $0.0034
+total: 38 calls, about 18282 tokens, $0.0034 (assumes 40 output tokens per call)
+budget: fits
+```
+
+Input tokens are counted from the real prompts that would be sent, using a
+rough rule (about four characters per token for Latin text and two for
+Persian), so expect the real number to be within a few tens of percent. Output
+tokens are assumed per call with `--output-tokens` (default 40). Panels count
+one call per member, `--calibrate` adds the gold pairs, and sampling and
+pairwise options are applied exactly as in `run`. No API key is needed.
+
+The command exits with `1` when the estimate exceeds `--max-cost`,
+`--max-tokens` or `--max-judgments`, so CI can stop before spending anything.
+`--json` prints the same data as JSON.
+
+In the GitHub Action, `max-cost`, `max-tokens` and `max-judgments` inputs set
+the same budgets for the run.
+
 ## Reports
 
 The Markdown report has a **Cost and usage** section, and `cost.json` holds the

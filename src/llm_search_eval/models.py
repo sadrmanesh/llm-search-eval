@@ -26,6 +26,9 @@ class Query:
     query_id: str
     text: str
     lang: str | None = None
+    #: Extra fields from the queries file, such as ``segment`` or ``traffic``.
+    #: Used for stratified sampling and per-group breakdowns.
+    attributes: Mapping[str, str] = field(default_factory=dict, compare=False)
 
 
 @dataclass(frozen=True, slots=True)

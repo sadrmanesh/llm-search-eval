@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from llm_search_eval.models import RELEVANCE_SCALE, Product, Query
 
 #: Bump when the prompt changes so cached judgments are invalidated.
@@ -47,4 +49,67 @@ def build_messages(query: Query, product: Product, max_product_chars: int = 2000
     return [
         {"role": "system", "content": system_prompt()},
         {"role": "user", "content": user_prompt(query, product, max_product_chars)},
+    ]
+
+
+#: Bump when the pairwise prompt changes so cached verdicts are invalidated.
+PAIRWISE_PROMPT_VERSION = "pairwise-v1"
+
+PAIRWISE_SYSTEM_PROMPT = """\
+You are an expert search quality rater for an online store. You see a shopper's
+search query and two ranked result lists, A and B, from two search engines.
+Decide which list serves the shopper better.
+
+Guidelines:
+- Judge the shopper's intent, not keyword overlap. Synonyms, transliterations,
+  and translations between Persian and English count as matches.
+- Top positions matter most: a relevant first result outweighs several relevant
+  results further down.
+- Products that break hard constraints in the query (brand, size, color,
+  compatibility, price range) count against a list.
+- The order in which the lists are shown is random. Do not prefer A or B for
+  its position, and do not prefer a list for being longer.
+- Answer "tie" when the lists are about equally useful.
+
+Respond with a single JSON object and nothing else:
+{"winner": "A" | "B" | "tie", "reason": "<one short sentence in English>"}"""
+
+
+def _result_list(products: Sequence[Product], max_product_chars: int) -> str:
+    if not products:
+        return "(no results)"
+    blocks = []
+    for rank, product in enumerate(products, start=1):
+        text = product.to_text(max_product_chars).replace("\n", "; ")
+        blocks.append(f"{rank}. {text}")
+    return "\n".join(blocks)
+
+
+def pairwise_user_prompt(
+    query: Query,
+    first: Sequence[Product],
+    second: Sequence[Product],
+    max_product_chars: int = 400,
+) -> str:
+    language = _LANGUAGE_NAMES.get(query.lang or "", query.lang or "unknown")
+    return (
+        f"Query language: {language}\n"
+        f"Search query: {query.text}\n\n"
+        f"Results A:\n{_result_list(first, max_product_chars)}\n\n"
+        f"Results B:\n{_result_list(second, max_product_chars)}"
+    )
+
+
+def build_pairwise_messages(
+    query: Query,
+    first: Sequence[Product],
+    second: Sequence[Product],
+    max_product_chars: int = 400,
+) -> list[dict]:
+    return [
+        {"role": "system", "content": PAIRWISE_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": pairwise_user_prompt(query, first, second, max_product_chars),
+        },
     ]

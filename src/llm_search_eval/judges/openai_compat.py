@@ -131,9 +131,12 @@ class OpenAICompatibleJudge(Judge):
         return f"openai:{self.model}"
 
     def _payload(self, query: Query, product: Product) -> dict[str, Any]:
+        return self._chat_payload(build_messages(query, product, self.max_product_chars))
+
+    def _chat_payload(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": self.model,
-            "messages": build_messages(query, product, self.max_product_chars),
+            "messages": messages,
             "temperature": self.temperature,
         }
         if self.json_mode:
@@ -141,11 +144,25 @@ class OpenAICompatibleJudge(Judge):
         return payload
 
     def judge(self, query: Query, product: Product) -> Judgment:
+        content, usage = self.complete(
+            build_messages(query, product, self.max_product_chars),
+            what=f"{query.query_id}/{product.product_id}",
+        )
+        return replace(parse_judgment(content), usage=usage)
+
+    def complete(
+        self, messages: list[dict[str, Any]], *, what: str = "request"
+    ) -> tuple[str, TokenUsage | None]:
+        """Send ``messages`` and return the reply text and token usage.
+
+        Retries rate limits, server errors and network failures with backoff.
+        Other judges (for example the pairwise judge) reuse this method.
+        """
         url = f"{self.base_url}/chat/completions"
         headers = {"Content-Type": "application/json", **self.extra_headers}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-        body = json.dumps(self._payload(query, product), ensure_ascii=False).encode("utf-8")
+        body = json.dumps(self._chat_payload(messages), ensure_ascii=False).encode("utf-8")
 
         last_error = ""
         for attempt in range(self.max_retries + 1):
@@ -155,16 +172,13 @@ class OpenAICompatibleJudge(Judge):
                 last_error = f"network error: {exc}"
             else:
                 if response.status == 200:
-                    content, usage = _message_content(response.body, self.model)
-                    return replace(parse_judgment(content), usage=usage)
+                    return _message_content(response.body, self.model)
                 last_error = f"HTTP {response.status}: {response.body[:300]}"
                 if response.status not in _RETRYABLE_STATUS:
                     break
             if attempt < self.max_retries:
                 self._sleep(min(30.0, 2**attempt) + random.uniform(0, 0.5))
-        raise JudgeError(
-            f"judge request failed for {query.query_id}/{product.product_id}: {last_error}"
-        )
+        raise JudgeError(f"judge request failed for {what}: {last_error}")
 
 
 def _requires_key(base_url: str) -> bool:

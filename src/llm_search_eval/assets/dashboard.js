@@ -29,6 +29,9 @@
   function fmt(v, d) { return v === null || v === undefined ? "n/a" : Number(v).toFixed(d === undefined ? 4 : d); }
   function signed(v) { return v === null || v === undefined ? "n/a" : (v >= 0 ? "+" : "") + Number(v).toFixed(4); }
   function pct(v) { return v === null || v === undefined ? "n/a" : (v >= 0 ? "+" : "") + (v * 100).toFixed(1) + "%"; }
+  function hasCI(x) { return x && x.ci_low !== undefined && x.ci_low !== null; }
+  function ciText(x, d) { return hasCI(x) ? "[" + fmt(x.ci_low, d) + ", " + fmt(x.ci_high, d) + "]" : ""; }
+  var ciLabel = cfg.bootstrap ? Math.round((cfg.confidence || 0.95) * 100) + "% CI" : null;
   function money(v) { return v === null || v === undefined ? "unknown" : "$" + Number(v).toFixed(4); }
   function td(text, cls) { return el("td", { text: text, class: cls || "" }); }
   function th(text, cls) { return el("th", { text: text, class: cls || "" }); }
@@ -52,7 +55,11 @@
     var chart = svg("svg", { width: width, height: height, role: "img", "aria-label": opts.label || "chart" });
     var plotW = width - labelW - valueW;
     var values = items.map(function (it) { return it.value || 0; });
-    var maxAbs = Math.max.apply(null, values.map(Math.abs).concat([opts.max || 0, 1e-9]));
+    var bounds = [];
+    items.forEach(function (it) {
+      if (it.low !== undefined && it.low !== null) bounds.push(Math.abs(it.low), Math.abs(it.high));
+    });
+    var maxAbs = Math.max.apply(null, values.map(Math.abs).concat(bounds, [opts.max || 0, 1e-9]));
     var signedMode = values.some(function (v) { return v < 0; });
     var zero = labelW + (signedMode ? plotW / 2 : 0);
     var scale = (signedMode ? plotW / 2 : plotW) / maxAbs;
@@ -69,6 +76,18 @@
         class: "bar" + (signedMode || opts.colorSign ? (v >= 0 ? " pos" : " neg") : ""), rx: 2
       });
       bar.appendChild(title);
+      if (it.low !== undefined && it.low !== null) {
+        var mid = y + rowH / 2 - 1;
+        var x1 = zero + it.low * scale, x2 = zero + it.high * scale;
+        var whisker = svg("path", {
+          d: "M" + x1 + "," + (mid - 4) + "v8M" + x1 + "," + mid + "H" + x2 + "M" + x2 + "," + (mid - 4) + "v8",
+          class: "ci"
+        });
+        var ciTitle = svg("title", {});
+        ciTitle.textContent = (ciLabel || "interval") + " " + fmt(it.low) + " to " + fmt(it.high);
+        whisker.appendChild(ciTitle);
+        chart.appendChild(whisker);
+      }
       var text = svg("text", { x: labelW + plotW + 6, y: y + 14 });
       text.textContent = it.value === null ? "n/a" : (signedMode ? signed(v) : fmt(v));
       chart.appendChild(label); chart.appendChild(bar); chart.appendChild(text);
@@ -85,12 +104,14 @@
       ["Tokens", cost.total_tokens === undefined ? "n/a" : cost.total_tokens.toLocaleString()],
       ["Cost", cost.requests ? money(cost.cost_usd) : "$0"]
     ];
+    if (ds.sampling) cards.splice(1, 0, ["Sampled from", ds.sampling.population]);
     var box = $("overview-cards");
     cards.forEach(function (c) {
       box.appendChild(el("div", { class: "card" }, [el("div", { class: "k", text: c[0] }), el("div", { class: "v", text: String(c[1]) })]));
     });
     $("meta").textContent = "Judge: " + (labels.judge || "none") + " \u00b7 depth " + cfg.depth +
       " \u00b7 relevant when grade \u2265 " + cfg.threshold + " \u00b7 baseline " + cfg.baseline +
+      (ds.sampling ? " \u00b7 sample of " + ds.sampling.sampled + "/" + ds.sampling.population + " queries (seed " + ds.sampling.seed + (ds.sampling.stratify_by ? ", by " + ds.sampling.stratify_by : "") + ")" : "") +
       " \u00b7 generated " + DATA.generated_at + " by llm-search-eval " + DATA.tool.version;
   }
 
@@ -105,15 +126,21 @@
       return el("tr", null, [td(s.name)].concat(metrics.map(function (m) {
         var v = s.metrics[m].mean;
         var isBest = v !== null && systems.length > 1 && Math.abs(v - best[m]) < 1e-12;
-        return td(fmt(v), "num" + (isBest ? " best" : ""));
+        var cell = td(fmt(v), "num" + (isBest ? " best" : ""));
+        if (hasCI(s.metrics[m])) cell.appendChild(el("span", { class: "ci-text", text: ciText(s.metrics[m], 3) }));
+        return cell;
       })));
     });
     $("summary-table").appendChild(table(["System"].concat(metrics), rows));
+    if (ciLabel) $("summary-note").textContent = "Brackets show the " + ciLabel + " from " + cfg.bootstrap + " bootstrap resamples over queries; whiskers in the chart show the same interval.";
     var select = $("metric-select");
     metrics.forEach(function (m) { select.appendChild(option(m, m, m === primary)); });
     function draw() {
       var m = select.value;
-      barChart($("metric-chart"), systems.map(function (s) { return { label: s.name, value: s.metrics[m].mean }; }), { max: 1, label: m });
+      barChart($("metric-chart"), systems.map(function (s) {
+        var x = s.metrics[m];
+        return { label: s.name, value: x.mean, low: hasCI(x) ? x.ci_low : null, high: hasCI(x) ? x.ci_high : null };
+      }), { max: 1, label: m });
     }
     select.addEventListener("change", draw);
     draw();
@@ -126,11 +153,15 @@
     var rows = comp.significance.map(function (t) {
       var d = comp.deltas.filter(function (x) { return x.system === t.system && x.metric === t.metric; })[0] || {};
       var cls = d.delta > 0 ? "num pos" : d.delta < 0 ? "num neg" : "num";
-      return el("tr", null, [td(t.system), td(signed(d.delta), cls), td(pct(d.relative), cls),
-        td(t.wins + " / " + t.ties + " / " + t.losses, "num"),
-        td(t.p_value === null ? "n/a" : t.p_value.toFixed(4) + (t.p_value < 0.05 ? " *" : ""), "num")]);
+      var cells = [td(t.system), td(signed(d.delta), cls), td(pct(d.relative), cls)];
+      if (ciLabel) cells.push(td(hasCI(d) ? "[" + signed(d.ci_low) + ", " + signed(d.ci_high) + "]" : "n/a", "num"));
+      cells.push(td(t.wins + " / " + t.ties + " / " + t.losses, "num"),
+        td(t.p_value === null ? "n/a" : t.p_value.toFixed(4) + (t.p_value < 0.05 ? " *" : ""), "num"));
+      return el("tr", null, cells);
     });
-    $("comparison-table").appendChild(table(["System", "\u0394 " + comp.primary_metric, "Relative", "Win / tie / loss", "p-value"], rows));
+    var heads = ["System", "\u0394 " + comp.primary_metric, "Relative"];
+    if (ciLabel) heads.push("\u0394 " + ciLabel);
+    $("comparison-table").appendChild(table(heads.concat(["Win / tie / loss", "p-value"]), rows));
     var select = $("compare-select");
     names.filter(function (n) { return n !== comp.baseline; }).forEach(function (n, i) { select.appendChild(option(n, n, i === 0)); });
     function draw() {
@@ -151,16 +182,83 @@
     draw();
   }
 
-  function renderLanguages() {
-    var by = DATA.by_language;
-    var langs = {};
-    Object.keys(by).forEach(function (s) { Object.keys(by[s]).forEach(function (l) { langs[l] = true; }); });
-    langs = Object.keys(langs).sort();
-    if (langs.length < 2) { $("languages").hidden = true; return; }
+  function groupTable(by, sectionId, tableId) {
+    var groups = {};
+    Object.keys(by || {}).forEach(function (s) { Object.keys(by[s]).forEach(function (g) { groups[g] = true; }); });
+    groups = Object.keys(groups).sort();
+    if (groups.length < 2) { $(sectionId).hidden = true; return; }
     var rows = Object.keys(by).map(function (s) {
-      return el("tr", null, [td(s)].concat(langs.map(function (l) { return td(fmt(by[s][l].mean) + " (n=" + by[s][l].n + ")", "num"); })));
+      return el("tr", null, [td(s)].concat(groups.map(function (g) {
+        var x = by[s][g];
+        return td(x ? fmt(x.mean) + " (n=" + x.n + ")" : "n/a", "num");
+      })));
     });
-    $("language-table").appendChild(table(["System"].concat(langs), rows));
+    $(tableId).appendChild(table(["System"].concat(groups), rows));
+  }
+
+  function renderLanguages() {
+    groupTable(DATA.by_language, "languages", "language-table");
+    var st = DATA.by_stratum;
+    if (!st) { $("strata").hidden = true; return; }
+    $("strata-title").textContent = "Primary metric by " + st.field;
+    groupTable(st.systems, "strata", "strata-table");
+  }
+
+  function renderPairwise() {
+    var pw = DATA.pairwise;
+    var section = $("pairwise");
+    if (!pw || !pw.comparisons || !pw.comparisons.length) { section.hidden = true; return; }
+    $("pairwise-note").textContent = "Judge " + pw.judge + " saw the top " + pw.k + " results of both systems for each query" +
+      (pw.swap ? ", once in each order; a win needs both orders to agree, otherwise it counts as a tie." : ", in one order.") +
+      " Win rate counts decided queries only, with a Wilson interval; p-values come from an exact sign test.";
+    var rows = pw.comparisons.map(function (c) {
+      var rate = c.win_rate_b === null ? "n/a" : (c.win_rate_b * 100).toFixed(1) + "%";
+      if (c.win_rate_ci) rate += " [" + (c.win_rate_ci.low * 100).toFixed(1) + ", " + (c.win_rate_ci.high * 100).toFixed(1) + "]";
+      var cls = c.win_rate_b === null ? "num" : c.win_rate_b > 0.5 ? "num pos" : c.win_rate_b < 0.5 ? "num neg" : "num";
+      return el("tr", null, [td(c.system_b + " vs " + c.system_a), td(String(c.wins_b), "num"), td(String(c.ties), "num"),
+        td(String(c.wins_a), "num"), td(rate, cls),
+        td(c.p_value === null ? "n/a" : c.p_value.toFixed(4) + (c.p_value < 0.05 ? " *" : ""), "num"),
+        td(String(c.inconsistent), "num")]);
+    });
+    $("pairwise-table").appendChild(table(["B vs A", "B wins", "Ties", "A wins", "B win rate", "p-value", "Inconsistent"], rows));
+
+    var bars = $("pairwise-bars");
+    pw.comparisons.forEach(function (c) {
+      var total = c.wins_a + c.wins_b + c.ties || 1;
+      var parts = [["b", c.wins_b, c.system_b + " wins"], ["tie", c.ties, "ties"], ["a", c.wins_a, c.system_a + " wins"]];
+      var bar = el("div", { class: "stack", role: "img", "aria-label": c.system_b + " vs " + c.system_a });
+      parts.forEach(function (p) {
+        if (!p[1]) return;
+        var seg = el("span", { class: "seg seg-" + p[0], title: p[2] + ": " + p[1], text: String(p[1]) });
+        seg.style.width = (100 * p[1] / total) + "%";
+        bar.appendChild(seg);
+      });
+      bars.appendChild(el("div", { class: "stack-row" }, [el("div", { class: "stack-label", text: c.system_b + " vs " + c.system_a }), bar]));
+    });
+
+    var select = $("pairwise-select");
+    pw.comparisons.forEach(function (c, i) { select.appendChild(option(String(i), c.system_b + " vs " + c.system_a, i === 0)); });
+    function draw() {
+      var c = pw.comparisons[Number(select.value)];
+      var box = $("pairwise-queries");
+      box.textContent = "";
+      var qrows = Object.keys(c.per_query).map(function (q) {
+        var r = c.per_query[q];
+        var who = r.winner === "a" ? c.system_a : r.winner === "b" ? c.system_b : "tie";
+        var text = details && details.queries[q] ? details.queries[q].text : "";
+        var tr = el("tr", null, [td(q), td(text), td(who, r.winner === "b" ? "pos" : r.winner === "a" ? "neg" : "muted"),
+          td((r.orders || []).join(" / ")), td(r.reason || "", "src")]);
+        if (details && details.queries[q]) {
+          tr.addEventListener("click", function () { if (window.__showQuery) window.__showQuery(q); });
+        }
+        return tr;
+      });
+      var t = table(["Id", "Query", "Winner", "Verdicts", "Reason"], qrows, false);
+      t.classList.add("clickable");
+      box.appendChild(t);
+    }
+    select.addEventListener("change", draw);
+    draw();
   }
 
   function renderJudging() {
@@ -273,6 +371,7 @@
       if (missing.length) box.appendChild(el("p", { class: "note", text: "Relevant products no system returned in the top " + cfg.depth + ": " + missing.join(", ") }));
       box.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
+    window.__showQuery = showQuery;
     if (qids.length) showQuery(qids[0]);
   }
 
@@ -280,6 +379,7 @@
   renderSummary();
   renderComparison();
   renderLanguages();
+  renderPairwise();
   renderJudging();
   renderCost();
   renderQueries();

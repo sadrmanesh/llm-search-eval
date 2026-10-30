@@ -25,6 +25,7 @@ _PRODUCT_ID = ("product_id", "pid", "doc_id", "docid", "item_id", "id")
 _QUERY_TEXT = ("text", "query", "query_text", "q")
 _TITLE = ("title", "name", "product_name")
 _RELEVANCE = ("relevance", "label", "grade", "rel")
+_QUERY_FIELDS = {*_QUERY_ID, *_QUERY_TEXT, "lang", "language"}
 _PRODUCT_FIELDS = {"description", "category", "brand", "price", "attributes"}
 
 
@@ -113,7 +114,12 @@ def load_queries(path: str | Path) -> dict[str, Query]:
         lang = str(rec.get("lang") or rec.get("language") or "").strip() or detect_language(text)
         if qid in queries:
             raise DatasetError(f"{where}: duplicate query id {qid!r}")
-        queries[qid] = Query(query_id=qid, text=text, lang=lang)
+        attributes = {
+            key: _scalar(value)
+            for key, value in rec.items()
+            if key not in _QUERY_FIELDS and value not in (None, "") and not isinstance(value, dict)
+        }
+        queries[qid] = Query(query_id=qid, text=text, lang=lang, attributes=attributes)
     if not queries:
         raise DatasetError(f"{path}: no queries found")
     return queries
@@ -319,6 +325,21 @@ def write_json(path: str | Path, payload: Any) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def write_queries(path: str | Path, queries: Mapping[str, Query] | Iterable[Query]) -> Path:
+    """Write queries as JSONL with their language and extra attributes."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    items = queries.values() if isinstance(queries, Mapping) else queries
+    with path.open("w", encoding="utf-8") as fh:
+        for q in items:
+            record: dict[str, Any] = {"query_id": q.query_id, "text": q.text}
+            if q.lang:
+                record["lang"] = q.lang
+            record.update({k: v for k, v in q.attributes.items() if k not in record})
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    return path
 
 
 def write_run(path: str | Path, run: Run) -> Path:
