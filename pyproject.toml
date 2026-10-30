@@ -1,0 +1,82 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "llm-search-eval"
+version = "0.1.0"
+description = "Evaluate product search and recommendation quality with LLM judges and classic IR metrics."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Naser Sadrmanesh", email = "info.sadrmanesh@gmail.com" }]
+keywords = [
+  "search",
+  "information-retrieval",
+  "evaluation",
+  "llm",
+  "llm-as-judge",
+  "ecommerce",
+  "recommendation",
+  "ndcg",
+  "persian",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Typing :: Typed",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "pytest-cov>=4.1", "ruff>=0.5"]
+
+[project.scripts]
+llm-search-eval = "llm_search_eval.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/sadrmanesh/llm-search-eval"
+Repository = "https://github.com/sadrmanesh/llm-search-eval"
+Issues = "https://github.com/sadrmanesh/llm-search-eval/issues"
+Changelog = "https://github.com/sadrmanesh/llm-search-eval/blob/main/CHANGELOG.md"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/llm_search_eval"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "examples", "README.md", "CHANGELOG.md", "LICENSE"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4", "RUF", "PT", "RET"]
+# Persian test data and normalization tables intentionally contain Arabic-script characters.
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["llm_search_eval"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+source = ["llm_search_eval"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
