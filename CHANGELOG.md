@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-30
+
+Statistical depth and a tighter pull request loop: pairwise judging, confidence intervals, query sampling, cost estimates before a run, sticky pull request comments, and three more connectors.
+
+### Added
+
+- Pairwise (A versus B) LLM judging with `--pairwise-judge`: the judge compares the top `--pairwise-k` results of two systems for each query, in both orders by default to cancel position bias (`--no-swap` to judge once). Reports show wins, ties, losses, the win rate with a Wilson interval, an exact sign test, and inconsistent verdicts. Pairs default to each system against the baseline or are chosen with `--pairwise A:B`; verdicts are cached with `--pairwise-cache` and share the cost tracker and budgets. Includes an OpenAI-compatible judge, an offline mock judge, and a registry for custom judges.
+- Bootstrap confidence intervals for every metric mean and paired bootstrap intervals for every delta against the baseline (`--bootstrap`, `--confidence`), in all report formats and as `ci_low` and `ci_high` in `report.json`.
+- Reproducible query sampling with `--sample` (count, fraction, or percentage), stratified by language or any query field with `--stratify` and `--min-per-stratum`, a `sample` command that writes a sampled queries file, and a per-stratum table of the primary metric.
+- `llm-search-eval estimate`: predicts judge calls, tokens, and cost for a run from the real prompts, after gold labels and cache hits, without calling any model, and exits with `1` when the budget is too small. `--json` for automation.
+- `llm-search-eval comment`: posts the gate result and report as a pull request comment and updates the same comment on later runs, with a hidden marker, pagination, a length limit, and a warning instead of a failure when the token lacks permission.
+- GitHub Action inputs `comment`, `comment-id`, `github-token`, `max-tokens`, `pairwise-judge`, `pairwise`, `bootstrap`, `confidence`, `sample`, and `stratify`, and a `comment-url` output.
+- Connectors for Meilisearch, Typesense, and any HTTP/JSON search API (`--backend http` with URL or body templates, `${ENV}` headers, and dotted result and id paths).
+- Dashboard: interval columns and chart whiskers, delta intervals in the comparison, sample size, a per-stratum table, and a pairwise view with stacked win bars and per-query verdicts linked to the drilldown.
+- Documentation pages for pairwise judging, confidence intervals, sampling, and pull request comments, including the required permissions and the fork caveats.
+
+### Changed
+
+- `fetch --index` is now optional and checked per backend, and `--url` and `--params` apply to every backend that uses them.
+- The sample report in `examples/electronics` now includes confidence intervals and a pairwise comparison.
+
 ## [0.2.0] - 2026-10-30
 
 First release intended for production use: judge panels, cost control, an interactive dashboard, CI quality gates, and live search connectors.

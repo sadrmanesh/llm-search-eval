@@ -22,10 +22,11 @@ llm-search-eval run \
   -s hybrid=examples/electronics/runs/hybrid.trec \
   --judge mock \
   --calibrate \
+  --pairwise-judge mock \
   --title "Electronics catalog: lexical vs semantic vs hybrid" \
   -o examples/electronics/sample-report
 ```
 
-`--calibrate` also sends the gold-labeled pairs to the judge, so the report shows how well it agrees with the gold labels. Open `sample-report/report.html` in a browser to explore the results per query.
+`--calibrate` also sends the gold-labeled pairs to the judge, so the report shows how well it agrees with the gold labels. `--pairwise-judge mock` adds a head to head comparison of each system with the baseline. Open `sample-report/report.html` in a browser to explore the results per query.
 
 The mock judge is a deterministic stand-in for tests. Use `--judge openai=MODEL` for meaningful labels, or try a panel offline with `--judge mock --judge mock=noise=0.2,seed=1 --judge mock=noise=0.3,seed=2`.

@@ -89,10 +89,14 @@ nav:
       - Relevance judges: relevance-judges.md
       - Panels and agreement: judges.md
       - Metrics: metrics.md
+      - Confidence intervals: statistics.md
+      - Pairwise comparison: pairwise.md
+      - Sampling and strata: sampling.md
       - Cost and budgets: cost.md
   - Output and automation:
       - Reports and dashboard: reports.md
       - Quality gates in CI: ci.md
+      - Pull request comments: pr-comments.md
       - Live search connectors: connectors.md
   - Python API: python-api.md
   - Persian support: persian.md

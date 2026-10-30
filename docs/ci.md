@@ -33,12 +33,17 @@ Exit codes: `0` passed, `1` a check failed, `2` invalid input.
 ## GitHub Action
 
 The repository is also a composite GitHub Action. It installs the tool, runs the
-evaluation, applies the gate, and writes the gate result and the full report to
-the job summary.
+evaluation, applies the gate, writes the gate result and the full report to
+the job summary, and posts or updates a comment on the pull request (see
+[Pull request comments](pr-comments.md)).
 
 ```yaml
 name: Search quality
 on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: write   # for the report comment
 
 jobs:
   evaluate:
@@ -54,7 +59,7 @@ jobs:
 
       - name: Evaluate rankings
         id: search-eval
-        uses: sadrmanesh/llm-search-eval@v0.2.0
+        uses: sadrmanesh/llm-search-eval@v0.3.0
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         with:
@@ -70,6 +75,9 @@ jobs:
           prices: |
             gpt-4o-mini=0.15,0.60
           max-cost: "2"
+          pairwise-judge: openai=gpt-4o-mini
+          sample: "300"
+          stratify: segment
           min: |
             ndcg@10=0.55
           max-drop: "0.01"
@@ -94,8 +102,12 @@ jobs:
 | `calibrate` | `false` | Judge gold pairs too and report agreement with gold. |
 | `cache` | | Judgment cache path. |
 | `prices` | | One `MODEL=INPUT,OUTPUT` per line. |
-| `max-cost`, `max-judgments` | | Budget limits. |
+| `max-cost`, `max-tokens`, `max-judgments` | | Budget limits (see [Cost and budgets](cost.md)). |
+| `pairwise-judge` | | Pairwise judge spec; turns on [pairwise comparison](pairwise.md). |
+| `pairwise` | | Pairs to compare, one `A:B` per line. Defaults to each system against the baseline. |
 | `metrics`, `primary`, `baseline`, `permutations`, `title` | | Evaluation settings. |
+| `bootstrap`, `confidence` | `1000`, `0.95` | [Confidence intervals](statistics.md); `0` resamples turns them off. |
+| `sample`, `stratify` | | [Query sampling](sampling.md): a count, fraction or percentage, and a query field. |
 | `args` | | Extra `run` arguments, one per line. |
 | `min` | | One `METRIC=VALUE` floor per line. |
 | `max-drop`, `max-relative-drop` | | Regression limits. |
@@ -103,6 +115,9 @@ jobs:
 | `gate-metrics` | | Metrics for the drop checks, one per line. |
 | `significant-only` | `false` | Ignore drops that are not significant. |
 | `fail-on-regression` | `true` | Fail the step when the gate fails. |
+| `comment` | `true` | Post or update a pull request comment with the gate result and the report. |
+| `comment-id` | `report` | Comment identity; jobs with different ids keep separate comments. |
+| `github-token` | `${{ github.token }}` | Token for the comment. Needs `pull-requests: write`. |
 | `output-dir` | `llm-search-eval-report` | Report directory. |
 | `python-version` | `3.12` | Python used by the action. |
 | `package` | the action's own version | pip requirement to install instead. |
@@ -114,5 +129,10 @@ jobs:
 | `report-dir` | Directory with all reports. |
 | `report-json`, `report-html` | Paths to `report.json` and the dashboard. |
 | `passed` | `true` when every gate check passed or no gate was configured. |
+| `comment-url` | Link to the pull request comment, when one was posted. |
 
 API keys are read from the environment of the step, as in the example above.
+
+To check the cost before a paid run, call `llm-search-eval estimate` with the
+same options in an earlier step; it exits with `1` when the budget is too
+small.

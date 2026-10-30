@@ -38,11 +38,13 @@ Offline search evaluation usually breaks down in the same places:
 - **LLM-as-judge:** graded 0 to 3 relevance labels from any OpenAI-compatible endpoint (OpenAI, OpenRouter, vLLM, Ollama, LM Studio, internal gateways), with retries, backoff, and robust JSON parsing.
 - **Judge panels:** combine several judges by majority, mean, median, min, or max, and tolerate individual failures.
 - **Agreement statistics:** Cohen's kappa (plain and weighted), Fleiss' kappa, and Krippendorff's alpha between judges, plus calibration of every judge against your gold labels.
-- **Cost tracking:** token usage per model, user-supplied prices, and budgets on cost, tokens, or judgments, with a `cost.json` report.
-- **System comparison:** deltas for every metric, win/tie/loss counts, and a paired randomization test against a baseline.
+- **Cost tracking:** token usage per model, user-supplied prices, budgets on cost, tokens, or judgments, and an `estimate` command that predicts the cost before any call.
+- **System comparison:** deltas for every metric, win/tie/loss counts, a paired randomization test, and bootstrap confidence intervals for every mean and delta.
+- **Pairwise judging:** an LLM compares two result lists side by side, in both orders to cancel position bias, and reports win rates with intervals and a sign test.
+- **Sampling:** reproducible random or stratified query samples, with per-segment results.
 - **Interactive dashboard:** one self-contained HTML file with charts, system comparison, and per-query drilldown. No server, no CDN.
-- **Quality gates:** `llm-search-eval gate` and a reusable GitHub Action fail the build when a metric drops below a floor or regresses.
-- **Live connectors:** fetch runs straight from Elasticsearch, OpenSearch, or Algolia.
+- **Quality gates:** `llm-search-eval gate` and a reusable GitHub Action fail the build when a metric drops below a floor or regresses, and post the result as a pull request comment that updates on every push.
+- **Live connectors:** fetch runs straight from Elasticsearch, OpenSearch, Algolia, Meilisearch, Typesense, or any HTTP/JSON search API.
 - **Pluggable judges** by decorator or `module:Class`, a **deterministic mock judge** for CI, and a **content-addressed judgment cache** so re-runs never pay twice.
 - **Flexible inputs:** JSONL, JSON, CSV, TSV, and TREC run/qrels files, with common field aliases.
 - **Zero runtime dependencies**, Python 3.10 to 3.13, fully typed.
@@ -67,11 +69,27 @@ Offline search evaluation usually breaks down in the same places:
 
     [Panels and agreement](judges.md)
 
+-   **Pairwise comparison**
+
+    ---
+
+    Ask which of two result lists a shopper would prefer, with position bias cancelled.
+
+    [Pairwise comparison](pairwise.md)
+
+-   **Confidence intervals**
+
+    ---
+
+    Bootstrap intervals for every mean and every difference between systems.
+
+    [Confidence intervals](statistics.md)
+
 -   **Cost and budgets**
 
     ---
 
-    Token accounting per model and hard limits on cost, tokens, or judgments.
+    Estimate the cost before a run, then track every token against hard limits.
 
     [Cost and budgets](cost.md)
 
@@ -87,7 +105,7 @@ Offline search evaluation usually breaks down in the same places:
 
     ---
 
-    Fail a pull request when a metric drops below a floor or regresses.
+    Fail a pull request when a metric regresses, and report it in a comment.
 
     [Quality gates](ci.md)
 
@@ -95,7 +113,7 @@ Offline search evaluation usually breaks down in the same places:
 
     ---
 
-    Evaluate the Elasticsearch, OpenSearch, or Algolia index you actually serve.
+    Evaluate the Elasticsearch, OpenSearch, Algolia, Meilisearch, Typesense, or custom API you actually serve.
 
     [Connectors](connectors.md)
 

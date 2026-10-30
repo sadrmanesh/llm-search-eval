@@ -4,7 +4,7 @@
 
 | File | Contents |
 | :--- | :--- |
-| `report.md` | Summary, comparison with p-values, deltas, per-language results, label coverage, judges and agreement, cost. |
+| `report.md` | Summary, confidence intervals, comparison with p-values and delta intervals, per-language and per-stratum results, pairwise preference, label coverage, judges and agreement, cost. |
 | `report.json` | Everything in the Markdown report plus per-query values, rankings, labels, and product summaries. |
 | `report.html` | Interactive dashboard in a single file. |
 | `cost.json` | Token usage, cost, and budget state (when a judge is used). |
@@ -20,10 +20,15 @@ email attachment. It follows the system light or dark theme.
 
 It contains:
 
-- overview cards: queries, products, label sources, tokens, and cost;
-- the metric table and a bar chart for any metric;
-- system comparison against the baseline with a per-query delta chart;
-- primary metric by query language;
+- overview cards: queries, products, sample size, label sources, tokens, and cost;
+- the metric table with confidence intervals, and a bar chart for any metric
+  with interval whiskers;
+- system comparison against the baseline with delta intervals and a per-query
+  delta chart;
+- primary metric by query language and by the stratification field;
+- pairwise preference: win, tie and loss counts with win rate intervals, a
+  stacked bar per pair, and every query's verdict and reason, linked to the
+  query drilldown;
 - judge label distribution, inter-judge agreement, and judge vs gold agreement;
 - cost per model;
 - a searchable query list with a drilldown that shows every system's ranking
@@ -32,6 +37,12 @@ It contains:
 The [sample dashboard](https://sadrmanesh.github.io/llm-search-eval/demo/report.html) is
 generated from the example dataset. Its source file is
 [`examples/electronics/sample-report/report.html`](https://github.com/sadrmanesh/llm-search-eval/blob/main/examples/electronics/sample-report/report.html).
+
+## Posting to a pull request
+
+`llm-search-eval comment` posts `gate.md` and `report.md` as one pull request
+comment and updates it on later runs. The GitHub Action does this by default;
+see [Pull request comments](pr-comments.md).
 
 ## Re-rendering a saved report
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="generator" content="llm-search-eval 0.2.0">
+<meta name="generator" content="llm-search-eval 0.3.0">
 <title>Electronics catalog: lexical vs semantic vs hybrid</title>
 <style>:root {
   --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #5f6b7a; --line: #e2e6ec;
@@ -44,6 +44,13 @@ svg text { fill: var(--text); font-size: 11px; }
 svg .axis { stroke: var(--line); }
 .bar { fill: var(--accent); }
 .bar.pos { fill: var(--good); } .bar.neg { fill: var(--bad); }
+svg .ci { stroke: var(--text); stroke-width: 1.5; fill: none; opacity: .7; }
+.ci-text { display: block; color: var(--muted); font-size: 11px; }
+.stack-row { display: grid; grid-template-columns: 220px 1fr; gap: 10px; align-items: center; margin: 6px 0; }
+.stack-label { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stack { display: flex; height: 22px; border-radius: 4px; overflow: hidden; border: 1px solid var(--line); }
+.seg { display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #fff; min-width: 18px; }
+.seg-b { background: var(--good); } .seg-a { background: var(--bad); } .seg-tie { background: var(--muted); }
 .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
 .clickable tbody tr:hover, tr.selected { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 12px; }
@@ -68,6 +75,7 @@ footer { color: var(--muted); padding: 0 32px 32px; font-size: 12px; }
   <a href="#summary">Metrics</a>
   <a href="#comparison">Comparison</a>
   <a href="#languages">Languages</a>
+  <a href="#pairwise">Pairwise</a>
   <a href="#judging">Judges</a>
   <a href="#cost">Cost</a>
   <a href="#queries">Queries</a>
@@ -80,6 +88,7 @@ footer { color: var(--muted); padding: 0 32px 32px; font-size: 12px; }
     <div class="row" style="margin-top:14px"><label for="metric-select">Chart</label>
       <select id="metric-select"></select></div>
     <div id="metric-chart"></div>
+    <p class="note" id="summary-note"></p>
   </section>
   <section id="comparison">
     <h2>System comparison</h2>
@@ -94,6 +103,19 @@ footer { color: var(--muted); padding: 0 32px 32px; font-size: 12px; }
   </section>
   <section id="languages">
     <h2>Primary metric by query language</h2><div id="language-table"></div>
+  </section>
+  <section id="strata">
+    <h2 id="strata-title">Primary metric by group</h2><div id="strata-table"></div>
+  </section>
+  <section id="pairwise">
+    <h2>Pairwise preference</h2>
+    <p class="note" id="pairwise-note"></p>
+    <div id="pairwise-table"></div>
+    <div id="pairwise-bars"></div>
+    <div class="row" style="margin-top:14px">
+      <label for="pairwise-select">Per query</label><select id="pairwise-select"></select>
+    </div>
+    <div id="pairwise-queries"></div>
   </section>
   <section id="judging">
     <h2>Judges</h2>
@@ -113,8 +135,8 @@ footer { color: var(--muted); padding: 0 32px 32px; font-size: 12px; }
     <div id="query-detail"></div>
   </section>
 </main>
-<footer>Produced by llm-search-eval 0.2.0.</footer>
-<script type="application/json" id="report-data">{"tool":{"name":"llm-search-eval","version":"0.2.0"},"title":"Electronics catalog: lexical vs semantic vs hybrid","generated_at":"2026-10-30T16:36:22+00:00","config":{"metrics":["ndcg@5","ndcg@10","precision@5","recall@10","mrr","map"],"primary_metric":"ndcg@10","depth":10,"threshold":2,"gain":"exponential","baseline":"bm25","permutations":10000,"seed":13,"calibrate":true,"calibration_sample":null},"dataset":{"queries":10,"products":22,"gold_labels":30,"languages":{"en":5,"fa":5}},"labels":{"judge":"mock","gold_used":30,"judged":49,"cached":0,"failed":0,"unknown_products":0,"unlabeled":0,"skipped_budget":0,"calibration":30,"errors":[]},"systems":[{"name":"bm25","metrics":{"ndcg@5":{"mean":0.5304716019917938,"n":10},"ndcg@10":{"mean":0.5304716019917938,"n":10},"precision@5":{"mean":0.22000000000000003,"n":10},"recall@10":{"mean":0.4833333333333333,"n":10},"mrr":{"mean":0.8,"n":10},"map":{"mean":0.4305555555555555,"n":10}},"coverage":{"queries_answered":9,"queries_total":10,"results_at_depth":29,"labeled_at_depth":1.0,"unknown_products":0},"per_query":{"q01":{"ndcg@5":0.6723402705002273,"ndcg@10":0.6723402705002273,"precision@5":0.2,"recall@10":0.5,"mrr":1.0,"map":0.5},"q02":{"ndcg@5":0.5317708654591168,"ndcg@10":0.5317708654591168,"precision@5":0.4,"recall@10":0.6666666666666666,"mrr":0.5,"map":0.38888888888888884},"q03":{"ndcg@5":0.6403662530558959,"ndcg@10":0.6403662530558959,"precision@5":0.2,"recall@10":0.5,"mrr":1.0,"map":0.5},"q04":{"ndcg@5":0.6131471927654584,"ndcg@10":0.6131471927654584,"precision@5":0.2,"recall@10":0.5,"mrr":1.0,"map":0.5},"q05":{"ndcg@5":0.688482449852666,"ndcg@10":0.688482449852666,"precision@5":0.4,"recall@10":0.6666666666666666,"mrr":1.0,"map":0.6666666666666666},"q06":{"ndcg@5":0.5874203951744313,"ndcg@10":0.5874203951744313,"precision@5":0.2,"recall@10":0.5,"mrr":1.0,"map":0.5},"q07":{"ndcg@5":0.37062100517025215,"ndcg@10":0.37062100517025215,"precision@5":0.2,"recall@10":0.5,"mrr":0.5,"map":0.25},"q08":{"ndcg@5":0.5874203951744313,"ndcg@10":0.5874203951744313,"precision@5":0.2,"recall@10":0.5,"mrr":1.0,"map":0.5},"q09":{"ndcg@5":0.0,"ndcg@10":0.0,"precision@5":0.0,"recall@10":0.0,"mrr":0.0,"map":0.0},"q10":{"ndcg@5":0.6131471927654584,"ndcg@10":0.6131471927654584,"precision@5":0.2,"recall@10":0.5,"mrr":1.0,"map":0.5}}},{"name":"semantic","metrics":{"ndcg@5":{"mean":0.9865450434615728,"n":10},"ndcg@10":{"mean":0.9865450434615728,"n":10},"precision@5":{"mean":0.42000000000000004,"n":10},"recall@10":{"mean":0.9666666666666666,"n":10},"mrr":{"mean":1.0,"n":10},"map":{"mean":0.9666666666666666,"n":10}},"coverage":{"queries_answered":10,"queries_total":10,"results_at_depth":42,"labeled_at_depth":1.0,"unknown_products":0},"per_query":{"q01":{"ndcg@5":0.9696205698332473,"ndcg@10":0.9696205698332473,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q02":{"ndcg@5":0.8958298647824811,"ndcg@10":0.8958298647824811,"precision@5":0.4,"recall@10":0.6666666666666666,"mrr":1.0,"map":0.6666666666666666},"q03":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q04":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q05":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.6,"recall@10":1.0,"mrr":1.0,"map":1.0},"q06":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q07":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q08":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q09":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q10":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0}}},{"name":"hybrid","metrics":{"ndcg@5":{"mean":0.9767451506431298,"n":10},"ndcg@10":{"mean":0.9767451506431298,"n":10},"precision@5":{"mean":0.42000000000000004,"n":10},"recall@10":{"mean":0.9666666666666666,"n":10},"mrr":{"mean":1.0,"n":10},"map":{"mean":0.9583333333333334,"n":10}},"coverage":{"queries_answered":10,"queries_total":10,"results_at_depth":36,"labeled_at_depth":1.0,"unknown_products":0},"per_query":{"q01":{"ndcg@5":0.9696205698332473,"ndcg@10":0.9696205698332473,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q02":{"ndcg@5":0.9617374216635709,"ndcg@10":0.9617374216635709,"precision@5":0.6,"recall@10":1.0,"mrr":1.0,"map":0.9166666666666666},"q03":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q04":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q05":{"ndcg@5":0.8838695436828513,"ndcg@10":0.8838695436828513,"precision@5":0.4,"recall@10":0.6666666666666666,"mrr":1.0,"map":0.6666666666666666},"q06":{"ndcg@5":0.9941825709069458,"ndcg@10":0.9941825709069458,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q07":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q08":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q09":{"ndcg@5":0.9580414003446834,"ndcg@10":0.9580414003446834,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q10":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0}}}],"comparison":{"baseline":"bm25","primary_metric":"ndcg@10","ranking":["semantic","hybrid","bm25"],"deltas":[{"system":"semantic","metric":"ndcg@5","baseline":0.5304716019917938,"value":0.9865450434615728,"delta":0.456073441469779,"relative":0.8597509079794894},{"system":"semantic","metric":"ndcg@10","baseline":0.5304716019917938,"value":0.9865450434615728,"delta":0.456073441469779,"relative":0.8597509079794894},{"system":"semantic","metric":"precision@5","baseline":0.22000000000000003,"value":0.42000000000000004,"delta":0.2,"relative":0.9090909090909091},{"system":"semantic","metric":"recall@10","baseline":0.4833333333333333,"value":0.9666666666666666,"delta":0.4833333333333333,"relative":1.0},{"system":"semantic","metric":"mrr","baseline":0.8,"value":1.0,"delta":0.19999999999999996,"relative":0.24999999999999994},{"system":"semantic","metric":"map","baseline":0.4305555555555555,"value":0.9666666666666666,"delta":0.536111111111111,"relative":1.2451612903225804},{"system":"hybrid","metric":"ndcg@5","baseline":0.5304716019917938,"value":0.9767451506431298,"delta":0.44627354865133606,"relative":0.8412769825485206},{"system":"hybrid","metric":"ndcg@10","baseline":0.5304716019917938,"value":0.9767451506431298,"delta":0.44627354865133606,"relative":0.8412769825485206},{"system":"hybrid","metric":"precision@5","baseline":0.22000000000000003,"value":0.42000000000000004,"delta":0.2,"relative":0.9090909090909091},{"system":"hybrid","metric":"recall@10","baseline":0.4833333333333333,"value":0.9666666666666666,"delta":0.4833333333333333,"relative":1.0},{"system":"hybrid","metric":"mrr","baseline":0.8,"value":1.0,"delta":0.19999999999999996,"relative":0.24999999999999994},{"system":"hybrid","metric":"map","baseline":0.4305555555555555,"value":0.9583333333333334,"delta":0.5277777777777779,"relative":1.2258064516129037}],"significance":[{"system":"semantic","metric":"ndcg@10","n":10,"wins":10,"ties":0,"losses":0,"p_value":0.001999800019998},{"system":"hybrid","metric":"ndcg@10","n":10,"wins":10,"ties":0,"losses":0,"p_value":0.001999800019998}]},"by_language":{"bm25":{"en":{"mean":0.6292214063266728,"n":5},"fa":{"mean":0.43172179765691465,"n":5}},"semantic":{"en":{"mean":0.9730900869231457,"n":5},"fa":{"mean":1.0,"n":5}},"hybrid":{"en":{"mean":0.963045507035934,"n":5},"fa":{"mean":0.9904447942503258,"n":5}}},"judging":{"judge":"mock","fingerprint":"mock:desc=0","panel":null,"pairs":49,"label_distribution":{"0":26,"1":10,"2":5,"3":8},"agreement":null,"gold_agreement":{"threshold":2,"judge":{"n":30,"exact":0.3333333333333333,"within_one":0.6666666666666666,"binary_agreement":0.6333333333333333,"cohen_kappa":0.0825688073394496,"weighted_kappa":0.2574257425742572,"binary_kappa":0.326530612244898,"mean_bias":-1.0,"confusion":{"rows":"gold","columns":"judge","categories":[0,1,2,3],"matrix":[[0,2,0,0],[5,2,1,0],[0,0,0,0],[6,4,2,8]]}},"members":{}}},"cost":{"judgments":49,"cache_hits":0,"requests":0,"prompt_tokens":0,"completion_tokens":0,"total_tokens":0,"cost_usd":0.0,"known_cost_usd":0,"unpriced_models":[],"models":{},"prices":{},"budget":{"max_cost_usd":null,"max_tokens":null,"max_judgments":null,"exhausted":false,"reason":null,"skipped_pairs":0}},"details":{"queries":{"q01":{"text":"wireless noise cancelling headphones","lang":"en"},"q02":{"text":"samsung galaxy phone 128gb","lang":"en"},"q03":{"text":"usb-c fast charger 65w","lang":"en"},"q04":{"text":"gaming laptop rtx","lang":"en"},"q05":{"text":"wireless mouse","lang":"en"},"q06":{"text":"هدفون بی سیم نویز کنسلینگ","lang":"fa"},"q07":{"text":"گوشی سامسونگ ۱۲۸ گیگابایت","lang":"fa"},"q08":{"text":"شارژر ۶۵ وات USB-C","lang":"fa"},"q09":{"text":"لپ تاپ گيمينگ","lang":"fa"},"q10":{"text":"قاب گوشی آیفون ۱۵","lang":"fa"}},"rankings":{"bm25":{"q01":["p06","p07","p05","p14","p02"],"q02":["p02","p03","p07","p04","p01"],"q03":["p08","p09","p14","p04","p01"],"q04":["p12","p11","p13"],"q05":["p14","p06","p07"],"q06":["p16","p21"],"q07":["p21","p15"],"q08":["p17","p21"],"q09":[],"q10":["p19","p21"]},"semantic":{"q01":["p06","p16","p05","p07","p02"],"q02":["p03","p15","p02","p04","p01"],"q03":["p08","p17","p09","p04","p14"],"q04":["p12","p18","p11","p13"],"q05":["p14","p20","p06"],"q06":["p16","p06","p05","p07","p21"],"q07":["p15","p03","p02","p04"],"q08":["p17","p08","p09"],"q09":["p18","p12","p11","p13"],"q10":["p19","p10","p01","p09"]},"hybrid":{"q01":["p06","p16","p07","p05"],"q02":["p03","p15","p02","p07"],"q03":["p08","p17","p09"],"q04":["p12","p18","p13","p11"],"q05":["p14","p20","p07"],"q06":["p16","p06","p07","p05"],"q07":["p15","p03","p02"],"q08":["p17","p08","p09","p21"],"q09":["p18","p12","p13"],"q10":["p19","p10","p09","p01"]}},"labels":{"q01":{"p02":{"grade":0,"source":"judge","reason":"matched 0/4 query terms: none"},"p05":{"grade":1,"source":"gold"},"p06":{"grade":3,"source":"gold"},"p07":{"grade":1,"source":"gold"},"p14":{"grade":1,"source":"judge","reason":"matched 1/4 query terms: wireless"},"p16":{"grade":3,"source":"gold"}},"q02":{"p01":{"grade":1,"source":"judge","reason":"matched 1/4 query terms: 128gb"},"p02":{"grade":1,"source":"gold"},"p03":{"grade":3,"source":"gold"},"p04":{"grade":0,"source":"judge","reason":"matched 0/4 query terms: none"},"p07":{"grade":2,"source":"judge","reason":"matched 2/4 query terms: galaxy, samsung"},"p15":{"grade":3,"source":"gold"}},"q03":{"p01":{"grade":0,"source":"judge","reason":"matched 0/5 query terms: none"},"p04":{"grade":0,"source":"judge","reason":"matched 0/5 query terms: none"},"p08":{"grade":3,"source":"gold"},"p09":{"grade":1,"source":"gold"},"p14":{"grade":0,"source":"judge","reason":"matched 0/5 query terms: none"},"p17":{"grade":3,"source":"gold"}},"q04":{"p11":{"grade":0,"source":"gold"},"p12":{"grade":3,"source":"gold"},"p13":{"grade":0,"source":"judge","reason":"matched 0/3 query terms: none"},"p18":{"grade":3,"source":"gold"}},"q05":{"p06":{"grade":2,"source":"judge","reason":"matched 1/2 query terms: wireless"},"p07":{"grade":0,"source":"judge","reason":"matched 0/2 query terms: none"},"p14":{"grade":3,"source":"gold"},"p20":{"grade":3,"source":"gold"}},"q06":{"p05":{"grade":1,"source":"gold"},"p06":{"grade":3,"source":"gold"},"p07":{"grade":0,"source":"judge","reason":"matched 0/5 query terms: none"},"p16":{"grade":3,"source":"gold"},"p21":{"grade":0,"source":"judge","reason":"matched 0/5 query terms: none"}},"q07":{"p02":{"grade":1,"source":"gold"},"p03":{"grade":3,"source":"gold"},"p04":{"grade":0,"source":"judge","reason":"matched 0/4 query terms: none"},"p15":{"grade":3,"source":"gold"},"p21":{"grade":0,"source":"judge","reason":"matched 0/4 query terms: none"}},"q08":{"p08":{"grade":3,"source":"gold"},"p09":{"grade":1,"source":"gold"},"p17":{"grade":3,"source":"gold"},"p21":{"grade":0,"source":"judge","reason":"matched 0/5 query terms: none"}},"q09":{"p11":{"grade":1,"source":"gold"},"p12":{"grade":3,"source":"gold"},"p13":{"grade":0,"source":"judge","reason":"matched 0/3 query terms: none"},"p18":{"grade":3,"source":"gold"}},"q10":{"p01":{"grade":0,"source":"gold"},"p09":{"grade":0,"source":"judge","reason":"matched 0/4 query terms: none"},"p10":{"grade":3,"source":"gold"},"p19":{"grade":3,"source":"gold"},"p21":{"grade":0,"source":"judge","reason":"matched 0/4 query terms: none"}}},"products":{"p01":{"title":"Apple iPhone 15 128GB Black","brand":"Apple","category":"Smartphones","price":"799 USD"},"p02":{"title":"Samsung Galaxy S24 256GB Onyx Black","brand":"Samsung","category":"Smartphones","price":"859 USD"},"p03":{"title":"Samsung Galaxy A55 5G 128GB Awesome Navy","brand":"Samsung","category":"Smartphones","price":"449 USD"},"p04":{"title":"Xiaomi Redmi Note 13 Pro 256GB","brand":"Xiaomi","category":"Smartphones","price":"329 USD"},"p05":{"title":"Apple AirPods Pro (2nd generation) with USB-C","brand":"Apple","category":"Earbuds","price":"249 USD"},"p06":{"title":"Sony WH-1000XM5 Wireless Noise Cancelling Headphones","brand":"Sony","category":"Headphones","price":"399 USD"},"p07":{"title":"Samsung Galaxy Buds2 Pro","brand":"Samsung","category":"Earbuds","price":"229 USD"},"p08":{"title":"Anker 735 USB-C Charger 65W GaN","brand":"Anker","category":"Chargers","price":"49 USD"},"p09":{"title":"Apple 20W USB-C Power Adapter","brand":"Apple","category":"Chargers","price":"19 USD"},"p10":{"title":"Silicone Case for iPhone 15 with MagSafe","brand":"Apple","category":"Phone Cases","price":"49 USD"},"p11":{"title":"Lenovo IdeaPad Slim 5 Laptop 16GB RAM 512GB SSD","brand":"Lenovo","category":"Laptops","price":"699 USD"},"p12":{"title":"ASUS ROG Strix G16 Gaming Laptop RTX 4060","brand":"ASUS","category":"Laptops","price":"1399 USD"},"p13":{"title":"Apple MacBook Air 13 M3 8GB 256GB","brand":"Apple","category":"Laptops","price":"1099 USD"},"p14":{"title":"Logitech MX Master 3S Wireless Mouse","brand":"Logitech","category":"Mice","price":"99 USD"},"p15":{"title":"گوشی موبایل سامسونگ گلکسی A55 ظرفیت 128 گیگابایت","brand":"سامسونگ","category":"گوشی موبایل","price":"22,500,000 تومان"},"p16":{"title":"هدفون بی سیم سونی WH-1000XM5 با قابلیت نویز کنسلینگ","brand":"سونی","category":"هدفون","price":"18,900,000 تومان"},"p17":{"title":"شارژر دیواری انکر 65 وات USB-C","brand":"انکر","category":"شارژر","price":"2,400,000 تومان"},"p18":{"title":"لپ تاپ گیمینگ ایسوس ROG Strix G16 با گرافیک RTX 4060","brand":"ایسوس","category":"لپ تاپ","price":"79,000,000 تومان"},"p19":{"title":"قاب سیلیکونی آیفون 15","brand":"اپل","category":"قاب گوشی","price":"1,200,000 تومان"},"p20":{"title":"ماوس بی سیم لاجیتک MX Master 3S","brand":"لاجیتک","category":"ماوس","price":"5,900,000 تومان"},"p21":{"title":"کتری برقی فیلیپس 1.7 لیتر","brand":"فیلیپس","category":"لوازم آشپزخانه","price":"3,100,000 تومان"}}}}</script>
+<footer>Produced by llm-search-eval 0.3.0.</footer>
+<script type="application/json" id="report-data">{"tool":{"name":"llm-search-eval","version":"0.3.0"},"title":"Electronics catalog: lexical vs semantic vs hybrid","generated_at":"2026-10-30T18:40:59+00:00","config":{"metrics":["ndcg@5","ndcg@10","precision@5","recall@10","mrr","map"],"primary_metric":"ndcg@10","depth":10,"threshold":2,"gain":"exponential","baseline":"bm25","permutations":10000,"seed":13,"bootstrap":1000,"confidence":0.95,"calibrate":true,"calibration_sample":null,"sample_size":null,"stratify_by":null},"dataset":{"queries":10,"products":22,"gold_labels":30,"languages":{"en":5,"fa":5},"population":10,"sampling":null},"labels":{"judge":"mock","gold_used":30,"judged":49,"cached":0,"failed":0,"unknown_products":0,"unlabeled":0,"skipped_budget":0,"calibration":30,"errors":[]},"systems":[{"name":"bm25","metrics":{"ndcg@5":{"mean":0.5304716019917938,"n":10,"ci_low":0.3969821093049387,"ci_high":0.6293106065236498},"ndcg@10":{"mean":0.5304716019917938,"n":10,"ci_low":0.3969821093049387,"ci_high":0.6293106065236498},"precision@5":{"mean":0.22000000000000003,"n":10,"ci_low":0.15999999999999998,"ci_high":0.28},"recall@10":{"mean":0.4833333333333333,"n":10,"ci_low":0.36666666666666664,"ci_high":0.5666666666666667},"mrr":{"mean":0.8,"n":10,"ci_low":0.6,"ci_high":1.0},"map":{"mean":0.4305555555555555,"n":10,"ci_low":0.31666666666666665,"ci_high":0.5222916666666666}},"coverage":{"queries_answered":9,"queries_total":10,"results_at_depth":29,"labeled_at_depth":1.0,"unknown_products":0},"per_query":{"q01":{"ndcg@5":0.6723402705002273,"ndcg@10":0.6723402705002273,"precision@5":0.2,"recall@10":0.5,"mrr":1.0,"map":0.5},"q02":{"ndcg@5":0.5317708654591168,"ndcg@10":0.5317708654591168,"precision@5":0.4,"recall@10":0.6666666666666666,"mrr":0.5,"map":0.38888888888888884},"q03":{"ndcg@5":0.6403662530558959,"ndcg@10":0.6403662530558959,"precision@5":0.2,"recall@10":0.5,"mrr":1.0,"map":0.5},"q04":{"ndcg@5":0.6131471927654584,"ndcg@10":0.6131471927654584,"precision@5":0.2,"recall@10":0.5,"mrr":1.0,"map":0.5},"q05":{"ndcg@5":0.688482449852666,"ndcg@10":0.688482449852666,"precision@5":0.4,"recall@10":0.6666666666666666,"mrr":1.0,"map":0.6666666666666666},"q06":{"ndcg@5":0.5874203951744313,"ndcg@10":0.5874203951744313,"precision@5":0.2,"recall@10":0.5,"mrr":1.0,"map":0.5},"q07":{"ndcg@5":0.37062100517025215,"ndcg@10":0.37062100517025215,"precision@5":0.2,"recall@10":0.5,"mrr":0.5,"map":0.25},"q08":{"ndcg@5":0.5874203951744313,"ndcg@10":0.5874203951744313,"precision@5":0.2,"recall@10":0.5,"mrr":1.0,"map":0.5},"q09":{"ndcg@5":0.0,"ndcg@10":0.0,"precision@5":0.0,"recall@10":0.0,"mrr":0.0,"map":0.0},"q10":{"ndcg@5":0.6131471927654584,"ndcg@10":0.6131471927654584,"precision@5":0.2,"recall@10":0.5,"mrr":1.0,"map":0.5}}},{"name":"semantic","metrics":{"ndcg@5":{"mean":0.9865450434615728,"n":10,"ci_low":0.965711016418069,"ci_high":1.0},"ndcg@10":{"mean":0.9865450434615728,"n":10,"ci_low":0.965711016418069,"ci_high":1.0},"precision@5":{"mean":0.42000000000000004,"n":10,"ci_low":0.39999999999999997,"ci_high":0.4600000000000001},"recall@10":{"mean":0.9666666666666666,"n":10,"ci_low":0.9,"ci_high":1.0},"mrr":{"mean":1.0,"n":10,"ci_low":1.0,"ci_high":1.0},"map":{"mean":0.9666666666666666,"n":10,"ci_low":0.9,"ci_high":1.0}},"coverage":{"queries_answered":10,"queries_total":10,"results_at_depth":42,"labeled_at_depth":1.0,"unknown_products":0},"per_query":{"q01":{"ndcg@5":0.9696205698332473,"ndcg@10":0.9696205698332473,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q02":{"ndcg@5":0.8958298647824811,"ndcg@10":0.8958298647824811,"precision@5":0.4,"recall@10":0.6666666666666666,"mrr":1.0,"map":0.6666666666666666},"q03":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q04":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q05":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.6,"recall@10":1.0,"mrr":1.0,"map":1.0},"q06":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q07":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q08":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q09":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q10":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0}}},{"name":"hybrid","metrics":{"ndcg@5":{"mean":0.9767451506431298,"n":10,"ci_low":0.9523558389114082,"ci_high":0.9950154206454378},"ndcg@10":{"mean":0.9767451506431298,"n":10,"ci_low":0.9523558389114082,"ci_high":0.9950154206454378},"precision@5":{"mean":0.42000000000000004,"n":10,"ci_low":0.39999999999999997,"ci_high":0.4600000000000001},"recall@10":{"mean":0.9666666666666666,"n":10,"ci_low":0.9,"ci_high":1.0},"mrr":{"mean":1.0,"n":10,"ci_low":1.0,"ci_high":1.0},"map":{"mean":0.9583333333333334,"n":10,"ci_low":0.8916666666666666,"ci_high":1.0}},"coverage":{"queries_answered":10,"queries_total":10,"results_at_depth":36,"labeled_at_depth":1.0,"unknown_products":0},"per_query":{"q01":{"ndcg@5":0.9696205698332473,"ndcg@10":0.9696205698332473,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q02":{"ndcg@5":0.9617374216635709,"ndcg@10":0.9617374216635709,"precision@5":0.6,"recall@10":1.0,"mrr":1.0,"map":0.9166666666666666},"q03":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q04":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q05":{"ndcg@5":0.8838695436828513,"ndcg@10":0.8838695436828513,"precision@5":0.4,"recall@10":0.6666666666666666,"mrr":1.0,"map":0.6666666666666666},"q06":{"ndcg@5":0.9941825709069458,"ndcg@10":0.9941825709069458,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q07":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q08":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q09":{"ndcg@5":0.9580414003446834,"ndcg@10":0.9580414003446834,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q10":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0}}}],"comparison":{"baseline":"bm25","primary_metric":"ndcg@10","ranking":["semantic","hybrid","bm25"],"deltas":[{"system":"semantic","metric":"ndcg@5","baseline":0.5304716019917938,"value":0.9865450434615728,"delta":0.456073441469779,"relative":0.8597509079794894,"ci_low":0.35926527798158864,"ci_high":0.5953066242425685},{"system":"semantic","metric":"ndcg@10","baseline":0.5304716019917938,"value":0.9865450434615728,"delta":0.456073441469779,"relative":0.8597509079794894,"ci_low":0.35926527798158864,"ci_high":0.5953066242425685},{"system":"semantic","metric":"precision@5","baseline":0.22000000000000003,"value":0.42000000000000004,"delta":0.2,"relative":0.9090909090909091,"ci_low":0.13999999999999999,"ci_high":0.26},{"system":"semantic","metric":"recall@10","baseline":0.4833333333333333,"value":0.9666666666666666,"delta":0.4833333333333333,"relative":1.0,"ci_low":0.35,"ci_high":0.6333333333333333},{"system":"semantic","metric":"mrr","baseline":0.8,"value":1.0,"delta":0.19999999999999996,"relative":0.24999999999999994,"ci_low":0.0,"ci_high":0.4},{"system":"semantic","metric":"map","baseline":0.4305555555555555,"value":0.9666666666666666,"delta":0.536111111111111,"relative":1.2451612903225804,"ci_low":0.4333333333333333,"ci_high":0.6668749999999999},{"system":"hybrid","metric":"ndcg@5","baseline":0.5304716019917938,"value":0.9767451506431298,"delta":0.44627354865133606,"relative":0.8412769825485206,"ci_low":0.3400542288401345,"ci_high":0.5762096962680768},{"system":"hybrid","metric":"ndcg@10","baseline":0.5304716019917938,"value":0.9767451506431298,"delta":0.44627354865133606,"relative":0.8412769825485206,"ci_low":0.3400542288401345,"ci_high":0.5762096962680768},{"system":"hybrid","metric":"precision@5","baseline":0.22000000000000003,"value":0.42000000000000004,"delta":0.2,"relative":0.9090909090909091,"ci_low":0.13999999999999999,"ci_high":0.24049999999999963},{"system":"hybrid","metric":"recall@10","baseline":0.4833333333333333,"value":0.9666666666666666,"delta":0.4833333333333333,"relative":1.0,"ci_low":0.33333333333333337,"ci_high":0.6004166666666663},{"system":"hybrid","metric":"mrr","baseline":0.8,"value":1.0,"delta":0.19999999999999996,"relative":0.24999999999999994,"ci_low":0.0,"ci_high":0.4},{"system":"hybrid","metric":"map","baseline":0.4305555555555555,"value":0.9583333333333334,"delta":0.5277777777777779,"relative":1.2258064516129037,"ci_low":0.37770833333333337,"ci_high":0.6587499999999996}],"significance":[{"system":"semantic","metric":"ndcg@10","n":10,"wins":10,"ties":0,"losses":0,"p_value":0.001999800019998},{"system":"hybrid","metric":"ndcg@10","n":10,"wins":10,"ties":0,"losses":0,"p_value":0.001999800019998}]},"by_language":{"bm25":{"en":{"mean":0.6292214063266728,"n":5},"fa":{"mean":0.43172179765691465,"n":5}},"semantic":{"en":{"mean":0.9730900869231457,"n":5},"fa":{"mean":1.0,"n":5}},"hybrid":{"en":{"mean":0.963045507035934,"n":5},"fa":{"mean":0.9904447942503258,"n":5}}},"by_stratum":null,"judging":{"judge":"mock","fingerprint":"mock:desc=0","panel":null,"pairs":49,"label_distribution":{"0":26,"1":10,"2":5,"3":8},"agreement":null,"gold_agreement":{"threshold":2,"judge":{"n":30,"exact":0.3333333333333333,"within_one":0.6666666666666666,"binary_agreement":0.6333333333333333,"cohen_kappa":0.0825688073394496,"weighted_kappa":0.2574257425742572,"binary_kappa":0.326530612244898,"mean_bias":-1.0,"confusion":{"rows":"gold","columns":"judge","categories":[0,1,2,3],"matrix":[[0,2,0,0],[5,2,1,0],[0,0,0,0],[6,4,2,8]]}},"members":{}}},"pairwise":{"judge":"mock","k":5,"swap":true,"comparisons":[{"system_a":"bm25","system_b":"semantic","judge":"mock","fingerprint":"pairwise-mock:margin=0.05:mock:desc=0","k":5,"swap":true,"queries":10,"wins_a":2,"wins_b":6,"ties":2,"inconsistent":0,"identical":0,"failed":0,"skipped_budget":0,"errors":[],"win_rate_b":0.75,"win_rate_ci":{"low":0.409275430310169,"high":0.928520787247891,"confidence":0.95},"preference_b":0.7,"p_value":0.2890625,"per_query":{"q01":{"winner":"a","orders":["A","B"],"reason":"DCG 7.43 vs 7.00","source":"judge"},"q02":{"winner":"a","orders":["A","B"],"reason":"DCG 6.78 vs 4.89","source":"judge"},"q03":{"winner":"b","orders":["B","A"],"reason":"DCG 4.13 vs 3.63","source":"judge"},"q04":{"winner":"b","orders":["B","A"],"reason":"DCG 8.13 vs 7.63","source":"judge"},"q05":{"winner":"tie","orders":["tie","tie"],"reason":"similar DCG (8.89 vs 8.50)","source":"judge"},"q06":{"winner":"tie","orders":["tie","tie"],"reason":"similar DCG (7.00 vs 7.00)","source":"judge"},"q07":{"winner":"b","orders":["B","A"],"reason":"DCG 7.00 vs 4.42","source":"judge"},"q08":{"winner":"b","orders":["B","A"],"reason":"DCG 8.13 vs 7.00","source":"judge"},"q09":{"winner":"b","orders":["B","A"],"reason":"DCG 7.00 vs 0.00","source":"judge"},"q10":{"winner":"b","orders":["B","A"],"reason":"DCG 8.13 vs 7.00","source":"judge"}}},{"system_a":"bm25","system_b":"hybrid","judge":"mock","fingerprint":"pairwise-mock:margin=0.05:mock:desc=0","k":5,"swap":true,"queries":10,"wins_a":3,"wins_b":6,"ties":1,"inconsistent":0,"identical":0,"failed":0,"skipped_budget":0,"errors":[],"win_rate_b":0.6666666666666666,"win_rate_ci":{"low":0.3542021355803963,"high":0.879416181613089,"confidence":0.95},"preference_b":0.65,"p_value":0.5078125,"per_query":{"q01":{"winner":"a","orders":["A","B"],"reason":"DCG 7.43 vs 7.00","source":"judge"},"q02":{"winner":"a","orders":["A","B"],"reason":"DCG 6.78 vs 5.79","source":"judge"},"q03":{"winner":"b","orders":["B","A"],"reason":"DCG 4.13 vs 3.63","source":"judge"},"q04":{"winner":"b","orders":["B","A"],"reason":"DCG 8.06 vs 7.63","source":"judge"},"q05":{"winner":"a","orders":["A","B"],"reason":"DCG 8.89 vs 7.00","source":"judge"},"q06":{"winner":"tie","orders":["tie","tie"],"reason":"similar DCG (7.00 vs 7.00)","source":"judge"},"q07":{"winner":"b","orders":["B","A"],"reason":"DCG 7.00 vs 4.42","source":"judge"},"q08":{"winner":"b","orders":["B","A"],"reason":"DCG 8.13 vs 7.00","source":"judge"},"q09":{"winner":"b","orders":["B","A"],"reason":"DCG 7.00 vs 0.00","source":"judge"},"q10":{"winner":"b","orders":["B","A"],"reason":"DCG 8.06 vs 7.00","source":"judge"}}}]},"cost":{"judgments":89,"cache_hits":0,"requests":0,"prompt_tokens":0,"completion_tokens":0,"total_tokens":0,"cost_usd":0.0,"known_cost_usd":0,"unpriced_models":[],"models":{},"prices":{},"budget":{"max_cost_usd":null,"max_tokens":null,"max_judgments":null,"exhausted":false,"reason":null,"skipped_pairs":0}},"details":{"queries":{"q01":{"text":"wireless noise cancelling headphones","lang":"en"},"q02":{"text":"samsung galaxy phone 128gb","lang":"en"},"q03":{"text":"usb-c fast charger 65w","lang":"en"},"q04":{"text":"gaming laptop rtx","lang":"en"},"q05":{"text":"wireless mouse","lang":"en"},"q06":{"text":"هدفون بی سیم نویز کنسلینگ","lang":"fa"},"q07":{"text":"گوشی سامسونگ ۱۲۸ گیگابایت","lang":"fa"},"q08":{"text":"شارژر ۶۵ وات USB-C","lang":"fa"},"q09":{"text":"لپ تاپ گيمينگ","lang":"fa"},"q10":{"text":"قاب گوشی آیفون ۱۵","lang":"fa"}},"rankings":{"bm25":{"q01":["p06","p07","p05","p14","p02"],"q02":["p02","p03","p07","p04","p01"],"q03":["p08","p09","p14","p04","p01"],"q04":["p12","p11","p13"],"q05":["p14","p06","p07"],"q06":["p16","p21"],"q07":["p21","p15"],"q08":["p17","p21"],"q09":[],"q10":["p19","p21"]},"semantic":{"q01":["p06","p16","p05","p07","p02"],"q02":["p03","p15","p02","p04","p01"],"q03":["p08","p17","p09","p04","p14"],"q04":["p12","p18","p11","p13"],"q05":["p14","p20","p06"],"q06":["p16","p06","p05","p07","p21"],"q07":["p15","p03","p02","p04"],"q08":["p17","p08","p09"],"q09":["p18","p12","p11","p13"],"q10":["p19","p10","p01","p09"]},"hybrid":{"q01":["p06","p16","p07","p05"],"q02":["p03","p15","p02","p07"],"q03":["p08","p17","p09"],"q04":["p12","p18","p13","p11"],"q05":["p14","p20","p07"],"q06":["p16","p06","p07","p05"],"q07":["p15","p03","p02"],"q08":["p17","p08","p09","p21"],"q09":["p18","p12","p13"],"q10":["p19","p10","p09","p01"]}},"labels":{"q01":{"p02":{"grade":0,"source":"judge","reason":"matched 0/4 query terms: none"},"p05":{"grade":1,"source":"gold"},"p06":{"grade":3,"source":"gold"},"p07":{"grade":1,"source":"gold"},"p14":{"grade":1,"source":"judge","reason":"matched 1/4 query terms: wireless"},"p16":{"grade":3,"source":"gold"}},"q02":{"p01":{"grade":1,"source":"judge","reason":"matched 1/4 query terms: 128gb"},"p02":{"grade":1,"source":"gold"},"p03":{"grade":3,"source":"gold"},"p04":{"grade":0,"source":"judge","reason":"matched 0/4 query terms: none"},"p07":{"grade":2,"source":"judge","reason":"matched 2/4 query terms: galaxy, samsung"},"p15":{"grade":3,"source":"gold"}},"q03":{"p01":{"grade":0,"source":"judge","reason":"matched 0/5 query terms: none"},"p04":{"grade":0,"source":"judge","reason":"matched 0/5 query terms: none"},"p08":{"grade":3,"source":"gold"},"p09":{"grade":1,"source":"gold"},"p14":{"grade":0,"source":"judge","reason":"matched 0/5 query terms: none"},"p17":{"grade":3,"source":"gold"}},"q04":{"p11":{"grade":0,"source":"gold"},"p12":{"grade":3,"source":"gold"},"p13":{"grade":0,"source":"judge","reason":"matched 0/3 query terms: none"},"p18":{"grade":3,"source":"gold"}},"q05":{"p06":{"grade":2,"source":"judge","reason":"matched 1/2 query terms: wireless"},"p07":{"grade":0,"source":"judge","reason":"matched 0/2 query terms: none"},"p14":{"grade":3,"source":"gold"},"p20":{"grade":3,"source":"gold"}},"q06":{"p05":{"grade":1,"source":"gold"},"p06":{"grade":3,"source":"gold"},"p07":{"grade":0,"source":"judge","reason":"matched 0/5 query terms: none"},"p16":{"grade":3,"source":"gold"},"p21":{"grade":0,"source":"judge","reason":"matched 0/5 query terms: none"}},"q07":{"p02":{"grade":1,"source":"gold"},"p03":{"grade":3,"source":"gold"},"p04":{"grade":0,"source":"judge","reason":"matched 0/4 query terms: none"},"p15":{"grade":3,"source":"gold"},"p21":{"grade":0,"source":"judge","reason":"matched 0/4 query terms: none"}},"q08":{"p08":{"grade":3,"source":"gold"},"p09":{"grade":1,"source":"gold"},"p17":{"grade":3,"source":"gold"},"p21":{"grade":0,"source":"judge","reason":"matched 0/5 query terms: none"}},"q09":{"p11":{"grade":1,"source":"gold"},"p12":{"grade":3,"source":"gold"},"p13":{"grade":0,"source":"judge","reason":"matched 0/3 query terms: none"},"p18":{"grade":3,"source":"gold"}},"q10":{"p01":{"grade":0,"source":"gold"},"p09":{"grade":0,"source":"judge","reason":"matched 0/4 query terms: none"},"p10":{"grade":3,"source":"gold"},"p19":{"grade":3,"source":"gold"},"p21":{"grade":0,"source":"judge","reason":"matched 0/4 query terms: none"}}},"products":{"p01":{"title":"Apple iPhone 15 128GB Black","brand":"Apple","category":"Smartphones","price":"799 USD"},"p02":{"title":"Samsung Galaxy S24 256GB Onyx Black","brand":"Samsung","category":"Smartphones","price":"859 USD"},"p03":{"title":"Samsung Galaxy A55 5G 128GB Awesome Navy","brand":"Samsung","category":"Smartphones","price":"449 USD"},"p04":{"title":"Xiaomi Redmi Note 13 Pro 256GB","brand":"Xiaomi","category":"Smartphones","price":"329 USD"},"p05":{"title":"Apple AirPods Pro (2nd generation) with USB-C","brand":"Apple","category":"Earbuds","price":"249 USD"},"p06":{"title":"Sony WH-1000XM5 Wireless Noise Cancelling Headphones","brand":"Sony","category":"Headphones","price":"399 USD"},"p07":{"title":"Samsung Galaxy Buds2 Pro","brand":"Samsung","category":"Earbuds","price":"229 USD"},"p08":{"title":"Anker 735 USB-C Charger 65W GaN","brand":"Anker","category":"Chargers","price":"49 USD"},"p09":{"title":"Apple 20W USB-C Power Adapter","brand":"Apple","category":"Chargers","price":"19 USD"},"p10":{"title":"Silicone Case for iPhone 15 with MagSafe","brand":"Apple","category":"Phone Cases","price":"49 USD"},"p11":{"title":"Lenovo IdeaPad Slim 5 Laptop 16GB RAM 512GB SSD","brand":"Lenovo","category":"Laptops","price":"699 USD"},"p12":{"title":"ASUS ROG Strix G16 Gaming Laptop RTX 4060","brand":"ASUS","category":"Laptops","price":"1399 USD"},"p13":{"title":"Apple MacBook Air 13 M3 8GB 256GB","brand":"Apple","category":"Laptops","price":"1099 USD"},"p14":{"title":"Logitech MX Master 3S Wireless Mouse","brand":"Logitech","category":"Mice","price":"99 USD"},"p15":{"title":"گوشی موبایل سامسونگ گلکسی A55 ظرفیت 128 گیگابایت","brand":"سامسونگ","category":"گوشی موبایل","price":"22,500,000 تومان"},"p16":{"title":"هدفون بی سیم سونی WH-1000XM5 با قابلیت نویز کنسلینگ","brand":"سونی","category":"هدفون","price":"18,900,000 تومان"},"p17":{"title":"شارژر دیواری انکر 65 وات USB-C","brand":"انکر","category":"شارژر","price":"2,400,000 تومان"},"p18":{"title":"لپ تاپ گیمینگ ایسوس ROG Strix G16 با گرافیک RTX 4060","brand":"ایسوس","category":"لپ تاپ","price":"79,000,000 تومان"},"p19":{"title":"قاب سیلیکونی آیفون 15","brand":"اپل","category":"قاب گوشی","price":"1,200,000 تومان"},"p20":{"title":"ماوس بی سیم لاجیتک MX Master 3S","brand":"لاجیتک","category":"ماوس","price":"5,900,000 تومان"},"p21":{"title":"کتری برقی فیلیپس 1.7 لیتر","brand":"فیلیپس","category":"لوازم آشپزخانه","price":"3,100,000 تومان"}}}}</script>
 <script>(function () {
   "use strict";
   var DATA = JSON.parse(document.getElementById("report-data").textContent);
@@ -146,6 +168,9 @@ footer { color: var(--muted); padding: 0 32px 32px; font-size: 12px; }
   function fmt(v, d) { return v === null || v === undefined ? "n/a" : Number(v).toFixed(d === undefined ? 4 : d); }
   function signed(v) { return v === null || v === undefined ? "n/a" : (v >= 0 ? "+" : "") + Number(v).toFixed(4); }
   function pct(v) { return v === null || v === undefined ? "n/a" : (v >= 0 ? "+" : "") + (v * 100).toFixed(1) + "%"; }
+  function hasCI(x) { return x && x.ci_low !== undefined && x.ci_low !== null; }
+  function ciText(x, d) { return hasCI(x) ? "[" + fmt(x.ci_low, d) + ", " + fmt(x.ci_high, d) + "]" : ""; }
+  var ciLabel = cfg.bootstrap ? Math.round((cfg.confidence || 0.95) * 100) + "% CI" : null;
   function money(v) { return v === null || v === undefined ? "unknown" : "$" + Number(v).toFixed(4); }
   function td(text, cls) { return el("td", { text: text, class: cls || "" }); }
   function th(text, cls) { return el("th", { text: text, class: cls || "" }); }
@@ -169,7 +194,11 @@ footer { color: var(--muted); padding: 0 32px 32px; font-size: 12px; }
     var chart = svg("svg", { width: width, height: height, role: "img", "aria-label": opts.label || "chart" });
     var plotW = width - labelW - valueW;
     var values = items.map(function (it) { return it.value || 0; });
-    var maxAbs = Math.max.apply(null, values.map(Math.abs).concat([opts.max || 0, 1e-9]));
+    var bounds = [];
+    items.forEach(function (it) {
+      if (it.low !== undefined && it.low !== null) bounds.push(Math.abs(it.low), Math.abs(it.high));
+    });
+    var maxAbs = Math.max.apply(null, values.map(Math.abs).concat(bounds, [opts.max || 0, 1e-9]));
     var signedMode = values.some(function (v) { return v < 0; });
     var zero = labelW + (signedMode ? plotW / 2 : 0);
     var scale = (signedMode ? plotW / 2 : plotW) / maxAbs;
@@ -186,6 +215,18 @@ footer { color: var(--muted); padding: 0 32px 32px; font-size: 12px; }
         class: "bar" + (signedMode || opts.colorSign ? (v >= 0 ? " pos" : " neg") : ""), rx: 2
       });
       bar.appendChild(title);
+      if (it.low !== undefined && it.low !== null) {
+        var mid = y + rowH / 2 - 1;
+        var x1 = zero + it.low * scale, x2 = zero + it.high * scale;
+        var whisker = svg("path", {
+          d: "M" + x1 + "," + (mid - 4) + "v8M" + x1 + "," + mid + "H" + x2 + "M" + x2 + "," + (mid - 4) + "v8",
+          class: "ci"
+        });
+        var ciTitle = svg("title", {});
+        ciTitle.textContent = (ciLabel || "interval") + " " + fmt(it.low) + " to " + fmt(it.high);
+        whisker.appendChild(ciTitle);
+        chart.appendChild(whisker);
+      }
       var text = svg("text", { x: labelW + plotW + 6, y: y + 14 });
       text.textContent = it.value === null ? "n/a" : (signedMode ? signed(v) : fmt(v));
       chart.appendChild(label); chart.appendChild(bar); chart.appendChild(text);
@@ -202,12 +243,14 @@ footer { color: var(--muted); padding: 0 32px 32px; font-size: 12px; }
       ["Tokens", cost.total_tokens === undefined ? "n/a" : cost.total_tokens.toLocaleString()],
       ["Cost", cost.requests ? money(cost.cost_usd) : "$0"]
     ];
+    if (ds.sampling) cards.splice(1, 0, ["Sampled from", ds.sampling.population]);
     var box = $("overview-cards");
     cards.forEach(function (c) {
       box.appendChild(el("div", { class: "card" }, [el("div", { class: "k", text: c[0] }), el("div", { class: "v", text: String(c[1]) })]));
     });
     $("meta").textContent = "Judge: " + (labels.judge || "none") + " \u00b7 depth " + cfg.depth +
       " \u00b7 relevant when grade \u2265 " + cfg.threshold + " \u00b7 baseline " + cfg.baseline +
+      (ds.sampling ? " \u00b7 sample of " + ds.sampling.sampled + "/" + ds.sampling.population + " queries (seed " + ds.sampling.seed + (ds.sampling.stratify_by ? ", by " + ds.sampling.stratify_by : "") + ")" : "") +
       " \u00b7 generated " + DATA.generated_at + " by llm-search-eval " + DATA.tool.version;
   }
 
@@ -222,15 +265,21 @@ footer { color: var(--muted); padding: 0 32px 32px; font-size: 12px; }
       return el("tr", null, [td(s.name)].concat(metrics.map(function (m) {
         var v = s.metrics[m].mean;
         var isBest = v !== null && systems.length > 1 && Math.abs(v - best[m]) < 1e-12;
-        return td(fmt(v), "num" + (isBest ? " best" : ""));
+        var cell = td(fmt(v), "num" + (isBest ? " best" : ""));
+        if (hasCI(s.metrics[m])) cell.appendChild(el("span", { class: "ci-text", text: ciText(s.metrics[m], 3) }));
+        return cell;
       })));
     });
     $("summary-table").appendChild(table(["System"].concat(metrics), rows));
+    if (ciLabel) $("summary-note").textContent = "Brackets show the " + ciLabel + " from " + cfg.bootstrap + " bootstrap resamples over queries; whiskers in the chart show the same interval.";
     var select = $("metric-select");
     metrics.forEach(function (m) { select.appendChild(option(m, m, m === primary)); });
     function draw() {
       var m = select.value;
-      barChart($("metric-chart"), systems.map(function (s) { return { label: s.name, value: s.metrics[m].mean }; }), { max: 1, label: m });
+      barChart($("metric-chart"), systems.map(function (s) {
+        var x = s.metrics[m];
+        return { label: s.name, value: x.mean, low: hasCI(x) ? x.ci_low : null, high: hasCI(x) ? x.ci_high : null };
+      }), { max: 1, label: m });
     }
     select.addEventListener("change", draw);
     draw();
@@ -243,11 +292,15 @@ footer { color: var(--muted); padding: 0 32px 32px; font-size: 12px; }
     var rows = comp.significance.map(function (t) {
       var d = comp.deltas.filter(function (x) { return x.system === t.system && x.metric === t.metric; })[0] || {};
       var cls = d.delta > 0 ? "num pos" : d.delta < 0 ? "num neg" : "num";
-      return el("tr", null, [td(t.system), td(signed(d.delta), cls), td(pct(d.relative), cls),
-        td(t.wins + " / " + t.ties + " / " + t.losses, "num"),
-        td(t.p_value === null ? "n/a" : t.p_value.toFixed(4) + (t.p_value < 0.05 ? " *" : ""), "num")]);
+      var cells = [td(t.system), td(signed(d.delta), cls), td(pct(d.relative), cls)];
+      if (ciLabel) cells.push(td(hasCI(d) ? "[" + signed(d.ci_low) + ", " + signed(d.ci_high) + "]" : "n/a", "num"));
+      cells.push(td(t.wins + " / " + t.ties + " / " + t.losses, "num"),
+        td(t.p_value === null ? "n/a" : t.p_value.toFixed(4) + (t.p_value < 0.05 ? " *" : ""), "num"));
+      return el("tr", null, cells);
     });
-    $("comparison-table").appendChild(table(["System", "\u0394 " + comp.primary_metric, "Relative", "Win / tie / loss", "p-value"], rows));
+    var heads = ["System", "\u0394 " + comp.primary_metric, "Relative"];
+    if (ciLabel) heads.push("\u0394 " + ciLabel);
+    $("comparison-table").appendChild(table(heads.concat(["Win / tie / loss", "p-value"]), rows));
     var select = $("compare-select");
     names.filter(function (n) { return n !== comp.baseline; }).forEach(function (n, i) { select.appendChild(option(n, n, i === 0)); });
     function draw() {
@@ -268,16 +321,83 @@ footer { color: var(--muted); padding: 0 32px 32px; font-size: 12px; }
     draw();
   }
 
-  function renderLanguages() {
-    var by = DATA.by_language;
-    var langs = {};
-    Object.keys(by).forEach(function (s) { Object.keys(by[s]).forEach(function (l) { langs[l] = true; }); });
-    langs = Object.keys(langs).sort();
-    if (langs.length < 2) { $("languages").hidden = true; return; }
+  function groupTable(by, sectionId, tableId) {
+    var groups = {};
+    Object.keys(by || {}).forEach(function (s) { Object.keys(by[s]).forEach(function (g) { groups[g] = true; }); });
+    groups = Object.keys(groups).sort();
+    if (groups.length < 2) { $(sectionId).hidden = true; return; }
     var rows = Object.keys(by).map(function (s) {
-      return el("tr", null, [td(s)].concat(langs.map(function (l) { return td(fmt(by[s][l].mean) + " (n=" + by[s][l].n + ")", "num"); })));
+      return el("tr", null, [td(s)].concat(groups.map(function (g) {
+        var x = by[s][g];
+        return td(x ? fmt(x.mean) + " (n=" + x.n + ")" : "n/a", "num");
+      })));
     });
-    $("language-table").appendChild(table(["System"].concat(langs), rows));
+    $(tableId).appendChild(table(["System"].concat(groups), rows));
+  }
+
+  function renderLanguages() {
+    groupTable(DATA.by_language, "languages", "language-table");
+    var st = DATA.by_stratum;
+    if (!st) { $("strata").hidden = true; return; }
+    $("strata-title").textContent = "Primary metric by " + st.field;
+    groupTable(st.systems, "strata", "strata-table");
+  }
+
+  function renderPairwise() {
+    var pw = DATA.pairwise;
+    var section = $("pairwise");
+    if (!pw || !pw.comparisons || !pw.comparisons.length) { section.hidden = true; return; }
+    $("pairwise-note").textContent = "Judge " + pw.judge + " saw the top " + pw.k + " results of both systems for each query" +
+      (pw.swap ? ", once in each order; a win needs both orders to agree, otherwise it counts as a tie." : ", in one order.") +
+      " Win rate counts decided queries only, with a Wilson interval; p-values come from an exact sign test.";
+    var rows = pw.comparisons.map(function (c) {
+      var rate = c.win_rate_b === null ? "n/a" : (c.win_rate_b * 100).toFixed(1) + "%";
+      if (c.win_rate_ci) rate += " [" + (c.win_rate_ci.low * 100).toFixed(1) + ", " + (c.win_rate_ci.high * 100).toFixed(1) + "]";
+      var cls = c.win_rate_b === null ? "num" : c.win_rate_b > 0.5 ? "num pos" : c.win_rate_b < 0.5 ? "num neg" : "num";
+      return el("tr", null, [td(c.system_b + " vs " + c.system_a), td(String(c.wins_b), "num"), td(String(c.ties), "num"),
+        td(String(c.wins_a), "num"), td(rate, cls),
+        td(c.p_value === null ? "n/a" : c.p_value.toFixed(4) + (c.p_value < 0.05 ? " *" : ""), "num"),
+        td(String(c.inconsistent), "num")]);
+    });
+    $("pairwise-table").appendChild(table(["B vs A", "B wins", "Ties", "A wins", "B win rate", "p-value", "Inconsistent"], rows));
+
+    var bars = $("pairwise-bars");
+    pw.comparisons.forEach(function (c) {
+      var total = c.wins_a + c.wins_b + c.ties || 1;
+      var parts = [["b", c.wins_b, c.system_b + " wins"], ["tie", c.ties, "ties"], ["a", c.wins_a, c.system_a + " wins"]];
+      var bar = el("div", { class: "stack", role: "img", "aria-label": c.system_b + " vs " + c.system_a });
+      parts.forEach(function (p) {
+        if (!p[1]) return;
+        var seg = el("span", { class: "seg seg-" + p[0], title: p[2] + ": " + p[1], text: String(p[1]) });
+        seg.style.width = (100 * p[1] / total) + "%";
+        bar.appendChild(seg);
+      });
+      bars.appendChild(el("div", { class: "stack-row" }, [el("div", { class: "stack-label", text: c.system_b + " vs " + c.system_a }), bar]));
+    });
+
+    var select = $("pairwise-select");
+    pw.comparisons.forEach(function (c, i) { select.appendChild(option(String(i), c.system_b + " vs " + c.system_a, i === 0)); });
+    function draw() {
+      var c = pw.comparisons[Number(select.value)];
+      var box = $("pairwise-queries");
+      box.textContent = "";
+      var qrows = Object.keys(c.per_query).map(function (q) {
+        var r = c.per_query[q];
+        var who = r.winner === "a" ? c.system_a : r.winner === "b" ? c.system_b : "tie";
+        var text = details && details.queries[q] ? details.queries[q].text : "";
+        var tr = el("tr", null, [td(q), td(text), td(who, r.winner === "b" ? "pos" : r.winner === "a" ? "neg" : "muted"),
+          td((r.orders || []).join(" / ")), td(r.reason || "", "src")]);
+        if (details && details.queries[q]) {
+          tr.addEventListener("click", function () { if (window.__showQuery) window.__showQuery(q); });
+        }
+        return tr;
+      });
+      var t = table(["Id", "Query", "Winner", "Verdicts", "Reason"], qrows, false);
+      t.classList.add("clickable");
+      box.appendChild(t);
+    }
+    select.addEventListener("change", draw);
+    draw();
   }
 
   function renderJudging() {
@@ -390,6 +510,7 @@ footer { color: var(--muted); padding: 0 32px 32px; font-size: 12px; }
       if (missing.length) box.appendChild(el("p", { class: "note", text: "Relevant products no system returned in the top " + cfg.depth + ": " + missing.join(", ") }));
       box.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
+    window.__showQuery = showQuery;
     if (qids.length) showQuery(qids[0]);
   }
 
@@ -397,6 +518,7 @@ footer { color: var(--muted); padding: 0 32px 32px; font-size: 12px; }
   renderSummary();
   renderComparison();
   renderLanguages();
+  renderPairwise();
   renderJudging();
   renderCost();
   renderQueries();
