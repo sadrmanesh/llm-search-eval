@@ -99,6 +99,7 @@ nav:
       - Pull request comments: pr-comments.md
       - Live search connectors: connectors.md
   - Python API: python-api.md
+  - Docker: docker.md
   - Persian support: persian.md
   - Releasing: releasing.md
   - Changelog: changelog.md

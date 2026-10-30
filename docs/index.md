@@ -11,6 +11,7 @@ Built for e-commerce teams who ship ranking changes (BM25 to vectors, hybrid ret
 
 [Get started](getting-started.md){ .md-button .md-button--primary }
 [Live sample dashboard](https://sadrmanesh.github.io/llm-search-eval/demo/report.html){ .md-button }
+[Try it in the browser](https://huggingface.co/spaces/sadrmanesh/llm-search-eval-demo){ .md-button }
 [GitHub](https://github.com/sadrmanesh/llm-search-eval){ .md-button }
 
 ```bash
