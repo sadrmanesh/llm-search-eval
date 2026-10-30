@@ -18,14 +18,15 @@ Every pull request must pass the same checks that CI runs:
 ```bash
 ruff check .
 ruff format --check .
+mypy
 pytest --cov
 ```
 
-The test suite runs fully offline. Use the `mock` judge or a fake transport (see `tests/test_judges.py`) instead of calling a real API in tests.
+The test suite runs fully offline. Use the `mock` judge or a fake transport (see `tests/test_judges.py`) instead of calling a real API in tests. Connector tests use fake HTTP transports and fake clients (see `tests/test_connectors.py`), so no search cluster or Algolia account is needed. The `action` job in CI exercises `action.yml` end to end; if you change the action, run it on a branch in your fork.
 
 ## Conventions
 
-- **Python 3.10+** with type hints on public functions. The package has no runtime dependencies; please discuss before adding one.
+- **Python 3.10+** with type hints checked by mypy. The package has no runtime dependencies; connector clients are optional extras and must stay optional.
 - **Formatting and linting** are handled by ruff. Keep lines at 100 characters.
 - **Tests** accompany every behavior change. Metric changes need hand-computed expectations.
 - **Errors** raised for bad input should be subclasses of `LLMSearchEvalError` with messages that point to the file and record.
@@ -45,9 +46,7 @@ Use the imperative mood and keep the subject under 72 characters, for example `A
 
 ## Releases
 
-1. Move the `[Unreleased]` entries into a new version section in `CHANGELOG.md`.
-2. Bump `version` in `pyproject.toml` and `__version__` in `src/llm_search_eval/__init__.py`.
-3. Merge to `main`, tag `vX.Y.Z`, and publish a GitHub release with the changelog section as notes.
+See [docs/releasing.md](docs/releasing.md). In short: move the `[Unreleased]` entries into a new version section in `CHANGELOG.md`, bump the version in `pyproject.toml` and `src/llm_search_eval/__init__.py`, merge to `main`, and push a `vX.Y.Z` tag. The release workflow builds, checks, and publishes the package.
 
 ## Reporting issues
 

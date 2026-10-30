@@ -15,5 +15,9 @@ class JudgeError(LLMSearchEvalError):
     """Raised when a relevance judge cannot produce a valid judgment."""
 
 
+class ConnectorError(LLMSearchEvalError):
+    """Raised when a live search backend cannot be queried."""
+
+
 class ConfigError(LLMSearchEvalError):
     """Raised for invalid evaluation settings, such as an unknown metric."""

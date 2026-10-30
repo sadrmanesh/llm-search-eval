@@ -1,10 +1,10 @@
 {
   "tool": {
     "name": "llm-search-eval",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "title": "Electronics catalog: lexical vs semantic vs hybrid",
-  "generated_at": "2026-10-30T15:43:15+00:00",
+  "generated_at": "2026-10-30T16:36:22+00:00",
   "config": {
     "metrics": [
       "ndcg@5",
@@ -20,7 +20,9 @@
     "gain": "exponential",
     "baseline": "bm25",
     "permutations": 10000,
-    "seed": 13
+    "seed": 13,
+    "calibrate": true,
+    "calibration_sample": null
   },
   "dataset": {
     "queries": 10,
@@ -32,13 +34,15 @@
     }
   },
   "labels": {
-    "judge": "mock:desc=0",
+    "judge": "mock",
     "gold_used": 30,
-    "judged": 19,
+    "judged": 49,
     "cached": 0,
     "failed": 0,
     "unknown_products": 0,
     "unlabeled": 0,
+    "skipped_budget": 0,
+    "calibration": 30,
     "errors": []
   },
   "systems": [
@@ -553,6 +557,673 @@
       "fa": {
         "mean": 0.9904447942503258,
         "n": 5
+      }
+    }
+  },
+  "judging": {
+    "judge": "mock",
+    "fingerprint": "mock:desc=0",
+    "panel": null,
+    "pairs": 49,
+    "label_distribution": {
+      "0": 26,
+      "1": 10,
+      "2": 5,
+      "3": 8
+    },
+    "agreement": null,
+    "gold_agreement": {
+      "threshold": 2,
+      "judge": {
+        "n": 30,
+        "exact": 0.3333333333333333,
+        "within_one": 0.6666666666666666,
+        "binary_agreement": 0.6333333333333333,
+        "cohen_kappa": 0.0825688073394496,
+        "weighted_kappa": 0.2574257425742572,
+        "binary_kappa": 0.326530612244898,
+        "mean_bias": -1.0,
+        "confusion": {
+          "rows": "gold",
+          "columns": "judge",
+          "categories": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "matrix": [
+            [
+              0,
+              2,
+              0,
+              0
+            ],
+            [
+              5,
+              2,
+              1,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              6,
+              4,
+              2,
+              8
+            ]
+          ]
+        }
+      },
+      "members": {}
+    }
+  },
+  "cost": {
+    "judgments": 49,
+    "cache_hits": 0,
+    "requests": 0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "cost_usd": 0.0,
+    "known_cost_usd": 0,
+    "unpriced_models": [],
+    "models": {},
+    "prices": {},
+    "budget": {
+      "max_cost_usd": null,
+      "max_tokens": null,
+      "max_judgments": null,
+      "exhausted": false,
+      "reason": null,
+      "skipped_pairs": 0
+    }
+  },
+  "details": {
+    "queries": {
+      "q01": {
+        "text": "wireless noise cancelling headphones",
+        "lang": "en"
+      },
+      "q02": {
+        "text": "samsung galaxy phone 128gb",
+        "lang": "en"
+      },
+      "q03": {
+        "text": "usb-c fast charger 65w",
+        "lang": "en"
+      },
+      "q04": {
+        "text": "gaming laptop rtx",
+        "lang": "en"
+      },
+      "q05": {
+        "text": "wireless mouse",
+        "lang": "en"
+      },
+      "q06": {
+        "text": "هدفون بی سیم نویز کنسلینگ",
+        "lang": "fa"
+      },
+      "q07": {
+        "text": "گوشی سامسونگ ۱۲۸ گیگابایت",
+        "lang": "fa"
+      },
+      "q08": {
+        "text": "شارژر ۶۵ وات USB-C",
+        "lang": "fa"
+      },
+      "q09": {
+        "text": "لپ تاپ گيمينگ",
+        "lang": "fa"
+      },
+      "q10": {
+        "text": "قاب گوشی آیفون ۱۵",
+        "lang": "fa"
+      }
+    },
+    "rankings": {
+      "bm25": {
+        "q01": [
+          "p06",
+          "p07",
+          "p05",
+          "p14",
+          "p02"
+        ],
+        "q02": [
+          "p02",
+          "p03",
+          "p07",
+          "p04",
+          "p01"
+        ],
+        "q03": [
+          "p08",
+          "p09",
+          "p14",
+          "p04",
+          "p01"
+        ],
+        "q04": [
+          "p12",
+          "p11",
+          "p13"
+        ],
+        "q05": [
+          "p14",
+          "p06",
+          "p07"
+        ],
+        "q06": [
+          "p16",
+          "p21"
+        ],
+        "q07": [
+          "p21",
+          "p15"
+        ],
+        "q08": [
+          "p17",
+          "p21"
+        ],
+        "q09": [],
+        "q10": [
+          "p19",
+          "p21"
+        ]
+      },
+      "semantic": {
+        "q01": [
+          "p06",
+          "p16",
+          "p05",
+          "p07",
+          "p02"
+        ],
+        "q02": [
+          "p03",
+          "p15",
+          "p02",
+          "p04",
+          "p01"
+        ],
+        "q03": [
+          "p08",
+          "p17",
+          "p09",
+          "p04",
+          "p14"
+        ],
+        "q04": [
+          "p12",
+          "p18",
+          "p11",
+          "p13"
+        ],
+        "q05": [
+          "p14",
+          "p20",
+          "p06"
+        ],
+        "q06": [
+          "p16",
+          "p06",
+          "p05",
+          "p07",
+          "p21"
+        ],
+        "q07": [
+          "p15",
+          "p03",
+          "p02",
+          "p04"
+        ],
+        "q08": [
+          "p17",
+          "p08",
+          "p09"
+        ],
+        "q09": [
+          "p18",
+          "p12",
+          "p11",
+          "p13"
+        ],
+        "q10": [
+          "p19",
+          "p10",
+          "p01",
+          "p09"
+        ]
+      },
+      "hybrid": {
+        "q01": [
+          "p06",
+          "p16",
+          "p07",
+          "p05"
+        ],
+        "q02": [
+          "p03",
+          "p15",
+          "p02",
+          "p07"
+        ],
+        "q03": [
+          "p08",
+          "p17",
+          "p09"
+        ],
+        "q04": [
+          "p12",
+          "p18",
+          "p13",
+          "p11"
+        ],
+        "q05": [
+          "p14",
+          "p20",
+          "p07"
+        ],
+        "q06": [
+          "p16",
+          "p06",
+          "p07",
+          "p05"
+        ],
+        "q07": [
+          "p15",
+          "p03",
+          "p02"
+        ],
+        "q08": [
+          "p17",
+          "p08",
+          "p09",
+          "p21"
+        ],
+        "q09": [
+          "p18",
+          "p12",
+          "p13"
+        ],
+        "q10": [
+          "p19",
+          "p10",
+          "p09",
+          "p01"
+        ]
+      }
+    },
+    "labels": {
+      "q01": {
+        "p02": {
+          "grade": 0,
+          "source": "judge",
+          "reason": "matched 0/4 query terms: none"
+        },
+        "p05": {
+          "grade": 1,
+          "source": "gold"
+        },
+        "p06": {
+          "grade": 3,
+          "source": "gold"
+        },
+        "p07": {
+          "grade": 1,
+          "source": "gold"
+        },
+        "p14": {
+          "grade": 1,
+          "source": "judge",
+          "reason": "matched 1/4 query terms: wireless"
+        },
+        "p16": {
+          "grade": 3,
+          "source": "gold"
+        }
+      },
+      "q02": {
+        "p01": {
+          "grade": 1,
+          "source": "judge",
+          "reason": "matched 1/4 query terms: 128gb"
+        },
+        "p02": {
+          "grade": 1,
+          "source": "gold"
+        },
+        "p03": {
+          "grade": 3,
+          "source": "gold"
+        },
+        "p04": {
+          "grade": 0,
+          "source": "judge",
+          "reason": "matched 0/4 query terms: none"
+        },
+        "p07": {
+          "grade": 2,
+          "source": "judge",
+          "reason": "matched 2/4 query terms: galaxy, samsung"
+        },
+        "p15": {
+          "grade": 3,
+          "source": "gold"
+        }
+      },
+      "q03": {
+        "p01": {
+          "grade": 0,
+          "source": "judge",
+          "reason": "matched 0/5 query terms: none"
+        },
+        "p04": {
+          "grade": 0,
+          "source": "judge",
+          "reason": "matched 0/5 query terms: none"
+        },
+        "p08": {
+          "grade": 3,
+          "source": "gold"
+        },
+        "p09": {
+          "grade": 1,
+          "source": "gold"
+        },
+        "p14": {
+          "grade": 0,
+          "source": "judge",
+          "reason": "matched 0/5 query terms: none"
+        },
+        "p17": {
+          "grade": 3,
+          "source": "gold"
+        }
+      },
+      "q04": {
+        "p11": {
+          "grade": 0,
+          "source": "gold"
+        },
+        "p12": {
+          "grade": 3,
+          "source": "gold"
+        },
+        "p13": {
+          "grade": 0,
+          "source": "judge",
+          "reason": "matched 0/3 query terms: none"
+        },
+        "p18": {
+          "grade": 3,
+          "source": "gold"
+        }
+      },
+      "q05": {
+        "p06": {
+          "grade": 2,
+          "source": "judge",
+          "reason": "matched 1/2 query terms: wireless"
+        },
+        "p07": {
+          "grade": 0,
+          "source": "judge",
+          "reason": "matched 0/2 query terms: none"
+        },
+        "p14": {
+          "grade": 3,
+          "source": "gold"
+        },
+        "p20": {
+          "grade": 3,
+          "source": "gold"
+        }
+      },
+      "q06": {
+        "p05": {
+          "grade": 1,
+          "source": "gold"
+        },
+        "p06": {
+          "grade": 3,
+          "source": "gold"
+        },
+        "p07": {
+          "grade": 0,
+          "source": "judge",
+          "reason": "matched 0/5 query terms: none"
+        },
+        "p16": {
+          "grade": 3,
+          "source": "gold"
+        },
+        "p21": {
+          "grade": 0,
+          "source": "judge",
+          "reason": "matched 0/5 query terms: none"
+        }
+      },
+      "q07": {
+        "p02": {
+          "grade": 1,
+          "source": "gold"
+        },
+        "p03": {
+          "grade": 3,
+          "source": "gold"
+        },
+        "p04": {
+          "grade": 0,
+          "source": "judge",
+          "reason": "matched 0/4 query terms: none"
+        },
+        "p15": {
+          "grade": 3,
+          "source": "gold"
+        },
+        "p21": {
+          "grade": 0,
+          "source": "judge",
+          "reason": "matched 0/4 query terms: none"
+        }
+      },
+      "q08": {
+        "p08": {
+          "grade": 3,
+          "source": "gold"
+        },
+        "p09": {
+          "grade": 1,
+          "source": "gold"
+        },
+        "p17": {
+          "grade": 3,
+          "source": "gold"
+        },
+        "p21": {
+          "grade": 0,
+          "source": "judge",
+          "reason": "matched 0/5 query terms: none"
+        }
+      },
+      "q09": {
+        "p11": {
+          "grade": 1,
+          "source": "gold"
+        },
+        "p12": {
+          "grade": 3,
+          "source": "gold"
+        },
+        "p13": {
+          "grade": 0,
+          "source": "judge",
+          "reason": "matched 0/3 query terms: none"
+        },
+        "p18": {
+          "grade": 3,
+          "source": "gold"
+        }
+      },
+      "q10": {
+        "p01": {
+          "grade": 0,
+          "source": "gold"
+        },
+        "p09": {
+          "grade": 0,
+          "source": "judge",
+          "reason": "matched 0/4 query terms: none"
+        },
+        "p10": {
+          "grade": 3,
+          "source": "gold"
+        },
+        "p19": {
+          "grade": 3,
+          "source": "gold"
+        },
+        "p21": {
+          "grade": 0,
+          "source": "judge",
+          "reason": "matched 0/4 query terms: none"
+        }
+      }
+    },
+    "products": {
+      "p01": {
+        "title": "Apple iPhone 15 128GB Black",
+        "brand": "Apple",
+        "category": "Smartphones",
+        "price": "799 USD"
+      },
+      "p02": {
+        "title": "Samsung Galaxy S24 256GB Onyx Black",
+        "brand": "Samsung",
+        "category": "Smartphones",
+        "price": "859 USD"
+      },
+      "p03": {
+        "title": "Samsung Galaxy A55 5G 128GB Awesome Navy",
+        "brand": "Samsung",
+        "category": "Smartphones",
+        "price": "449 USD"
+      },
+      "p04": {
+        "title": "Xiaomi Redmi Note 13 Pro 256GB",
+        "brand": "Xiaomi",
+        "category": "Smartphones",
+        "price": "329 USD"
+      },
+      "p05": {
+        "title": "Apple AirPods Pro (2nd generation) with USB-C",
+        "brand": "Apple",
+        "category": "Earbuds",
+        "price": "249 USD"
+      },
+      "p06": {
+        "title": "Sony WH-1000XM5 Wireless Noise Cancelling Headphones",
+        "brand": "Sony",
+        "category": "Headphones",
+        "price": "399 USD"
+      },
+      "p07": {
+        "title": "Samsung Galaxy Buds2 Pro",
+        "brand": "Samsung",
+        "category": "Earbuds",
+        "price": "229 USD"
+      },
+      "p08": {
+        "title": "Anker 735 USB-C Charger 65W GaN",
+        "brand": "Anker",
+        "category": "Chargers",
+        "price": "49 USD"
+      },
+      "p09": {
+        "title": "Apple 20W USB-C Power Adapter",
+        "brand": "Apple",
+        "category": "Chargers",
+        "price": "19 USD"
+      },
+      "p10": {
+        "title": "Silicone Case for iPhone 15 with MagSafe",
+        "brand": "Apple",
+        "category": "Phone Cases",
+        "price": "49 USD"
+      },
+      "p11": {
+        "title": "Lenovo IdeaPad Slim 5 Laptop 16GB RAM 512GB SSD",
+        "brand": "Lenovo",
+        "category": "Laptops",
+        "price": "699 USD"
+      },
+      "p12": {
+        "title": "ASUS ROG Strix G16 Gaming Laptop RTX 4060",
+        "brand": "ASUS",
+        "category": "Laptops",
+        "price": "1399 USD"
+      },
+      "p13": {
+        "title": "Apple MacBook Air 13 M3 8GB 256GB",
+        "brand": "Apple",
+        "category": "Laptops",
+        "price": "1099 USD"
+      },
+      "p14": {
+        "title": "Logitech MX Master 3S Wireless Mouse",
+        "brand": "Logitech",
+        "category": "Mice",
+        "price": "99 USD"
+      },
+      "p15": {
+        "title": "گوشی موبایل سامسونگ گلکسی A55 ظرفیت 128 گیگابایت",
+        "brand": "سامسونگ",
+        "category": "گوشی موبایل",
+        "price": "22,500,000 تومان"
+      },
+      "p16": {
+        "title": "هدفون بی سیم سونی WH-1000XM5 با قابلیت نویز کنسلینگ",
+        "brand": "سونی",
+        "category": "هدفون",
+        "price": "18,900,000 تومان"
+      },
+      "p17": {
+        "title": "شارژر دیواری انکر 65 وات USB-C",
+        "brand": "انکر",
+        "category": "شارژر",
+        "price": "2,400,000 تومان"
+      },
+      "p18": {
+        "title": "لپ تاپ گیمینگ ایسوس ROG Strix G16 با گرافیک RTX 4060",
+        "brand": "ایسوس",
+        "category": "لپ تاپ",
+        "price": "79,000,000 تومان"
+      },
+      "p19": {
+        "title": "قاب سیلیکونی آیفون 15",
+        "brand": "اپل",
+        "category": "قاب گوشی",
+        "price": "1,200,000 تومان"
+      },
+      "p20": {
+        "title": "ماوس بی سیم لاجیتک MX Master 3S",
+        "brand": "لاجیتک",
+        "category": "ماوس",
+        "price": "5,900,000 تومان"
+      },
+      "p21": {
+        "title": "کتری برقی فیلیپس 1.7 لیتر",
+        "brand": "فیلیپس",
+        "category": "لوازم آشپزخانه",
+        "price": "3,100,000 تومان"
       }
     }
   }

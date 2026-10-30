@@ -47,7 +47,7 @@ def test_write_reports(tmp_path, example_dataset, example_runs):
     report = evaluate(example_dataset, example_runs, judge=MockJudge())
     written = write_reports(report, tmp_path / "out")
     names = sorted(p.name for p in written)
-    assert names == ["judgments.jsonl", "report.json", "report.md"]
+    assert names == ["cost.json", "judgments.jsonl", "report.json", "report.md"]
     data = json.loads((tmp_path / "out" / "report.json").read_text(encoding="utf-8"))
     assert data["tool"]["name"] == "llm-search-eval"
     assert data["systems"][0]["name"] == "bm25"
@@ -60,3 +60,25 @@ def test_write_reports_respects_formats(tmp_path, tiny_dataset):
     report = evaluate(tiny_dataset, [Run("s", {"q1": ["a"]})])
     written = write_reports(report, tmp_path, formats=["json"])
     assert [p.name for p in written] == ["report.json"]
+
+
+def test_markdown_judging_and_cost_sections(example_dataset, example_runs):
+    from llm_search_eval.judges.base import TokenUsage
+    from llm_search_eval.judges.panel import JudgePanel
+    from llm_search_eval.usage import Budget, CostTracker, PriceTable
+
+    panel = JudgePanel([MockJudge(noise=0.2, seed=1), MockJudge(noise=0.2, seed=2)])
+    tracker = CostTracker(
+        prices=PriceTable.parse_specs(["gpt-4o-mini=0.15,0.6"]), budget=Budget(max_cost_usd=5)
+    )
+    tracker.record([TokenUsage("gpt-4o-mini", 1000, 100), TokenUsage("local", 10, 1)])
+    config = EvaluationConfig(permutations=100, calibrate=True)
+    md = render_markdown(
+        evaluate(example_dataset, example_runs, config, judge=panel, tracker=tracker)
+    )
+    assert "## Judges" in md
+    assert "Fleiss' kappa" in md
+    assert "## Cost and usage" in md
+    assert "| `gpt-4o-mini` | 1 | 1,000 | 100 | $0.0002 |" in md
+    assert "No price configured for `local`" in md
+    assert "Budget: max cost USD 5" in md

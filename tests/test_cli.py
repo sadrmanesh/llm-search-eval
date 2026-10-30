@@ -7,7 +7,7 @@ import sys
 import pytest
 
 from llm_search_eval import __version__
-from llm_search_eval.cli import EXIT_JUDGE_FAILURES, EXIT_USAGE, main
+from llm_search_eval.cli import EXIT_GATE_FAILED, EXIT_JUDGE_FAILURES, EXIT_USAGE, main
 
 
 @pytest.fixture
@@ -88,7 +88,7 @@ def test_run_reports_judge_failures(tmp_path, base_args):
     [
         (["--judge", "nope"], "unknown judge"),
         (["--metrics", "ndcg"], "needs a cutoff"),
-        (["--format", "html"], "unknown report format"),
+        (["--format", "pdf"], "unknown report format"),
         (["--baseline", "zzz"], "baseline"),
     ],
 )
@@ -176,3 +176,158 @@ def test_module_entry_point():
     )
     assert "run" in result.stdout
     assert "validate" in result.stdout
+
+
+# Panels, cost, report, gate and fetch ---------------------------------------------
+
+
+def test_run_with_panel_prices_and_budget(tmp_path, base_args, capsys):
+    out = tmp_path / "panel"
+    code = main(
+        ["run", *base_args,
+         "--judge", "mock=noise=0.3,seed=1", "--judge", "mock=noise=0.3,seed=2",
+         "--judge", "mock=noise=0.3,seed=3", "--aggregate", "median", "--min-votes", "3",
+         "--calibrate", "--calibration-sample", "5", "--price", "gpt-4o-mini=0.15,0.6",
+         "--max-judgments", "1000", "--permutations", "100", "-o", str(out)]
+    )  # fmt: skip
+    assert code == 0
+    data = json.loads((out / "report.json").read_text(encoding="utf-8"))
+    assert data["judging"]["panel"]["aggregation"] == "median"
+    assert data["judging"]["panel"]["min_votes"] == 3
+    assert data["labels"]["calibration"] == 5
+    assert data["cost"]["prices"]["gpt-4o-mini"]["input_per_million"] == 0.15
+    assert data["cost"]["budget"]["max_judgments"] == 1000
+    assert {p.name for p in out.iterdir()} == {
+        "report.md", "report.json", "report.html", "cost.json", "judgments.jsonl"
+    }  # fmt: skip
+    record = json.loads((out / "judgments.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert len(record["votes"]) == 3
+    md = (out / "report.md").read_text(encoding="utf-8")
+    assert "### Inter-judge agreement" in md
+    assert "### Agreement with gold labels" in md
+    assert "judge requests: 0" in capsys.readouterr().err
+
+
+def test_run_budget_warning(tmp_path, base_args, capsys):
+    code = main(
+        ["run", *base_args, "--judge", "mock", "--max-judgments", "3", "--concurrency", "1",
+         "--format", "json", "-o", str(tmp_path), "--quiet"]
+    )  # fmt: skip
+    assert code == 0
+    assert "pair(s) were not judged" in capsys.readouterr().err
+    cost = json.loads((tmp_path / "cost.json").read_text(encoding="utf-8"))
+    assert cost["budget"]["exhausted"]
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        (["--judge", "mock=noise"], "invalid options for judge"),
+        (["--judge", "mock=bad-key=1"], "invalid judge option"),
+        (["--calibrate"], "needs at least one --judge"),
+        (["--price", "m=1"], "invalid price"),
+        (
+            ["--judge", "mock", "--judge", "mock", "--aggregate", "mean", "--min-votes", "5"],
+            "votes",
+        ),
+    ],
+)
+def test_run_judge_option_errors(tmp_path, base_args, capsys, extra, message):
+    code = main(["run", *base_args, *extra, "-o", str(tmp_path), "--quiet"])
+    assert code == EXIT_USAGE
+    assert message in capsys.readouterr().err
+
+
+@pytest.fixture
+def saved_report(tmp_path, base_args):
+    out = tmp_path / "saved"
+    assert main(["run", *base_args, "--permutations", "200", "-o", str(out), "--quiet"]) == 0
+    return out / "report.json"
+
+
+def test_report_command_rerenders(tmp_path, saved_report):
+    target = tmp_path / "rendered"
+    assert main(["report", str(saved_report), "-o", str(target), "--format", "md,html"]) == 0
+    assert (target / "report.html").read_text(encoding="utf-8").startswith("<!DOCTYPE html>")
+    assert "## Summary" in (target / "report.md").read_text(encoding="utf-8")
+    assert main(["report", str(saved_report), "--format", "json"]) == EXIT_USAGE
+
+
+def test_gate_command(tmp_path, saved_report, capsys):
+    summary = tmp_path / "summary.md"
+    result_json = tmp_path / "gate.json"
+    code = main(
+        ["gate", str(saved_report), "--min", "ndcg@10=0.5", "--max-drop", "0.5",
+         "--summary", str(summary), "--json", str(result_json)]
+    )  # fmt: skip
+    assert code == 0
+    assert "Search quality gate: passed" in capsys.readouterr().out
+    assert "passed" in summary.read_text(encoding="utf-8")
+    assert json.loads(result_json.read_text(encoding="utf-8"))["passed"] is True
+    code = main(["gate", str(saved_report), "--min", "ndcg@10=0.99", "--system", "bm25"])
+    assert code == EXIT_GATE_FAILED
+    code = main(["gate", str(saved_report), "--reference", str(saved_report), "--max-drop", "0"])
+    assert code == 0
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        ([], "set at least one"),
+        (["--min", "ndcg@10"], "METRIC=VALUE"),
+        (["--min", "ndcg@7=0.1"], "not in the report"),
+    ],
+)
+def test_gate_usage_errors(saved_report, capsys, args, message):
+    with_report = ["gate", str(saved_report), *args]
+    if message == "METRIC=VALUE":
+        with pytest.raises(SystemExit):
+            main(with_report)
+    else:
+        assert main(with_report) == EXIT_USAGE
+    assert message in capsys.readouterr().err
+
+
+def test_fetch_command(tmp_path, example_dir, monkeypatch, capsys):
+    from llm_search_eval.connectors import ElasticsearchConnector
+
+    def fake_search(self, query, k):
+        assert self.index == "products"
+        assert self.fields == ["title^2", "brand"]
+        return [f"{query.query_id}-a", f"{query.query_id}-b"][:k]
+
+    monkeypatch.setattr(ElasticsearchConnector, "search", fake_search)
+    output = tmp_path / "live.jsonl"
+    code = main(
+        ["fetch", "-q", str(example_dir / "queries.jsonl"), "--backend", "elasticsearch",
+         "--url", "http://localhost:9200", "--index", "products", "--fields", "title^2,brand",
+         "-k", "1", "-o", str(output)]
+    )  # fmt: skip
+    assert code == 0
+    rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    assert rows[0]["results"] == [f"{rows[0]['query_id']}-a"]
+    assert "from elasticsearch" in capsys.readouterr().err
+
+
+def test_fetch_reports_failures_and_bad_options(tmp_path, example_dir, monkeypatch, capsys):
+    from llm_search_eval.connectors import AlgoliaConnector
+    from llm_search_eval.errors import ConnectorError
+
+    def failing(self, query, k):
+        raise ConnectorError("HTTP 403")
+
+    monkeypatch.setattr(AlgoliaConnector, "search", failing)
+    monkeypatch.setenv("ALGOLIA_API_KEY", "key")
+    base = ["fetch", "-q", str(example_dir / "queries.jsonl"), "--backend", "algolia",
+            "--app-id", "APP", "--index", "products", "-o", str(tmp_path / "a.jsonl")]  # fmt: skip
+    assert main(base) == EXIT_JUDGE_FAILURES
+    assert "HTTP 403" in capsys.readouterr().err
+    assert main([*base, "--params", "[1]"]) == EXIT_USAGE
+    assert "must be a JSON object" in capsys.readouterr().err
+    template = tmp_path / "missing.json"
+    code = main(
+        ["fetch", "-q", str(example_dir / "queries.jsonl"), "--backend", "opensearch",
+         "--url", "http://os", "--index", "p", "--template", str(template), "-o",
+         str(tmp_path / "o.jsonl")]
+    )  # fmt: skip
+    assert code == EXIT_USAGE

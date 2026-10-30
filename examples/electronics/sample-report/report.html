@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="llm-search-eval 0.2.0">
+<title>Electronics catalog: lexical vs semantic vs hybrid</title>
+<style>:root {
+  --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #5f6b7a; --line: #e2e6ec;
+  --accent: #2563eb; --good: #15803d; --bad: #b91c1c; --warn: #b45309;
+  --g0: #e5e7eb; --g1: #fde68a; --g2: #93c5fd; --g3: #86efac;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11151c; --card: #1a2029; --text: #e6e9ef; --muted: #9aa5b4; --line: #2b3441;
+    --accent: #60a5fa; --good: #4ade80; --bad: #f87171; --warn: #fbbf24;
+    --g0: #374151; --g1: #854d0e; --g2: #1e40af; --g3: #166534;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, Vazirmatn, Tahoma, sans-serif; background: var(--bg); color: var(--text); }
+header { padding: 24px 32px 8px; }
+header h1 { margin: 0 0 4px; font-size: 22px; }
+header .meta { color: var(--muted); }
+nav { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line); padding: 8px 32px; display: flex; gap: 16px; flex-wrap: wrap; }
+nav a { color: var(--accent); text-decoration: none; font-weight: 500; }
+main { padding: 16px 32px 48px; display: grid; gap: 20px; }
+section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+section h2 { margin: 0 0 12px; font-size: 17px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.card { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.card .v { font-size: 20px; font-weight: 600; }
+.card .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.best { font-weight: 700; color: var(--accent); }
+.pos { color: var(--good); } .neg { color: var(--bad); } .muted { color: var(--muted); }
+.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+select, input[type=search] { font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--text); }
+input[type=search] { min-width: 260px; }
+svg text { fill: var(--text); font-size: 11px; }
+svg .axis { stroke: var(--line); }
+.bar { fill: var(--accent); }
+.bar.pos { fill: var(--good); } .bar.neg { fill: var(--bad); }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+.clickable tbody tr:hover, tr.selected { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 12px; }
+.list h3 { margin: 0 0 6px; font-size: 14px; }
+.list ol { margin: 0; padding-left: 26px; }
+.list li { margin: 0 0 6px; }
+.badge { display: inline-block; min-width: 20px; text-align: center; border-radius: 4px; padding: 0 5px; margin-right: 6px; font-weight: 600; font-size: 12px; color: #111; }
+.g0 { background: var(--g0); } .g1 { background: var(--g1); } .g2 { background: var(--g2); } .g3 { background: var(--g3); } .gx { background: transparent; border: 1px dashed var(--muted); color: var(--muted); }
+.src { color: var(--muted); font-size: 12px; }
+.reason { color: var(--muted); font-size: 12px; display: block; }
+.note { color: var(--muted); font-size: 13px; }
+footer { color: var(--muted); padding: 0 32px 32px; font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Electronics catalog: lexical vs semantic vs hybrid</h1>
+  <div class="meta" id="meta"></div>
+</header>
+<nav>
+  <a href="#overview">Overview</a>
+  <a href="#summary">Metrics</a>
+  <a href="#comparison">Comparison</a>
+  <a href="#languages">Languages</a>
+  <a href="#judging">Judges</a>
+  <a href="#cost">Cost</a>
+  <a href="#queries">Queries</a>
+</nav>
+<main>
+  <section id="overview"><h2>Overview</h2><div class="cards" id="overview-cards"></div></section>
+  <section id="summary">
+    <h2>Metrics</h2>
+    <div id="summary-table"></div>
+    <div class="row" style="margin-top:14px"><label for="metric-select">Chart</label>
+      <select id="metric-select"></select></div>
+    <div id="metric-chart"></div>
+  </section>
+  <section id="comparison">
+    <h2>System comparison</h2>
+    <div id="comparison-table"></div>
+    <p class="note">p-values come from a two-sided paired randomization test;
+      * marks p &lt; 0.05.</p>
+    <div class="row">
+      <label for="compare-select">System</label><select id="compare-select"></select>
+    </div>
+    <p class="note" id="delta-note"></p>
+    <div id="delta-chart"></div>
+  </section>
+  <section id="languages">
+    <h2>Primary metric by query language</h2><div id="language-table"></div>
+  </section>
+  <section id="judging">
+    <h2>Judges</h2>
+    <div class="split">
+      <div><h3>Label distribution</h3><div id="label-chart"></div></div>
+      <div id="judging-info"></div>
+    </div>
+    <div id="gold-info"></div>
+  </section>
+  <section id="cost">
+    <h2>Cost and usage</h2><div id="cost-table"></div><p class="note" id="cost-note"></p>
+  </section>
+  <section id="queries">
+    <h2>Queries</h2>
+    <div class="row"><input type="search" id="query-filter" placeholder="Filter queries"></div>
+    <div id="query-table"></div>
+    <div id="query-detail"></div>
+  </section>
+</main>
+<footer>Produced by llm-search-eval 0.2.0.</footer>
+<script type="application/json" id="report-data">{"tool":{"name":"llm-search-eval","version":"0.2.0"},"title":"Electronics catalog: lexical vs semantic vs hybrid","generated_at":"2026-10-30T16:36:22+00:00","config":{"metrics":["ndcg@5","ndcg@10","precision@5","recall@10","mrr","map"],"primary_metric":"ndcg@10","depth":10,"threshold":2,"gain":"exponential","baseline":"bm25","permutations":10000,"seed":13,"calibrate":true,"calibration_sample":null},"dataset":{"queries":10,"products":22,"gold_labels":30,"languages":{"en":5,"fa":5}},"labels":{"judge":"mock","gold_used":30,"judged":49,"cached":0,"failed":0,"unknown_products":0,"unlabeled":0,"skipped_budget":0,"calibration":30,"errors":[]},"systems":[{"name":"bm25","metrics":{"ndcg@5":{"mean":0.5304716019917938,"n":10},"ndcg@10":{"mean":0.5304716019917938,"n":10},"precision@5":{"mean":0.22000000000000003,"n":10},"recall@10":{"mean":0.4833333333333333,"n":10},"mrr":{"mean":0.8,"n":10},"map":{"mean":0.4305555555555555,"n":10}},"coverage":{"queries_answered":9,"queries_total":10,"results_at_depth":29,"labeled_at_depth":1.0,"unknown_products":0},"per_query":{"q01":{"ndcg@5":0.6723402705002273,"ndcg@10":0.6723402705002273,"precision@5":0.2,"recall@10":0.5,"mrr":1.0,"map":0.5},"q02":{"ndcg@5":0.5317708654591168,"ndcg@10":0.5317708654591168,"precision@5":0.4,"recall@10":0.6666666666666666,"mrr":0.5,"map":0.38888888888888884},"q03":{"ndcg@5":0.6403662530558959,"ndcg@10":0.6403662530558959,"precision@5":0.2,"recall@10":0.5,"mrr":1.0,"map":0.5},"q04":{"ndcg@5":0.6131471927654584,"ndcg@10":0.6131471927654584,"precision@5":0.2,"recall@10":0.5,"mrr":1.0,"map":0.5},"q05":{"ndcg@5":0.688482449852666,"ndcg@10":0.688482449852666,"precision@5":0.4,"recall@10":0.6666666666666666,"mrr":1.0,"map":0.6666666666666666},"q06":{"ndcg@5":0.5874203951744313,"ndcg@10":0.5874203951744313,"precision@5":0.2,"recall@10":0.5,"mrr":1.0,"map":0.5},"q07":{"ndcg@5":0.37062100517025215,"ndcg@10":0.37062100517025215,"precision@5":0.2,"recall@10":0.5,"mrr":0.5,"map":0.25},"q08":{"ndcg@5":0.5874203951744313,"ndcg@10":0.5874203951744313,"precision@5":0.2,"recall@10":0.5,"mrr":1.0,"map":0.5},"q09":{"ndcg@5":0.0,"ndcg@10":0.0,"precision@5":0.0,"recall@10":0.0,"mrr":0.0,"map":0.0},"q10":{"ndcg@5":0.6131471927654584,"ndcg@10":0.6131471927654584,"precision@5":0.2,"recall@10":0.5,"mrr":1.0,"map":0.5}}},{"name":"semantic","metrics":{"ndcg@5":{"mean":0.9865450434615728,"n":10},"ndcg@10":{"mean":0.9865450434615728,"n":10},"precision@5":{"mean":0.42000000000000004,"n":10},"recall@10":{"mean":0.9666666666666666,"n":10},"mrr":{"mean":1.0,"n":10},"map":{"mean":0.9666666666666666,"n":10}},"coverage":{"queries_answered":10,"queries_total":10,"results_at_depth":42,"labeled_at_depth":1.0,"unknown_products":0},"per_query":{"q01":{"ndcg@5":0.9696205698332473,"ndcg@10":0.9696205698332473,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q02":{"ndcg@5":0.8958298647824811,"ndcg@10":0.8958298647824811,"precision@5":0.4,"recall@10":0.6666666666666666,"mrr":1.0,"map":0.6666666666666666},"q03":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q04":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q05":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.6,"recall@10":1.0,"mrr":1.0,"map":1.0},"q06":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q07":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q08":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q09":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q10":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0}}},{"name":"hybrid","metrics":{"ndcg@5":{"mean":0.9767451506431298,"n":10},"ndcg@10":{"mean":0.9767451506431298,"n":10},"precision@5":{"mean":0.42000000000000004,"n":10},"recall@10":{"mean":0.9666666666666666,"n":10},"mrr":{"mean":1.0,"n":10},"map":{"mean":0.9583333333333334,"n":10}},"coverage":{"queries_answered":10,"queries_total":10,"results_at_depth":36,"labeled_at_depth":1.0,"unknown_products":0},"per_query":{"q01":{"ndcg@5":0.9696205698332473,"ndcg@10":0.9696205698332473,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q02":{"ndcg@5":0.9617374216635709,"ndcg@10":0.9617374216635709,"precision@5":0.6,"recall@10":1.0,"mrr":1.0,"map":0.9166666666666666},"q03":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q04":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q05":{"ndcg@5":0.8838695436828513,"ndcg@10":0.8838695436828513,"precision@5":0.4,"recall@10":0.6666666666666666,"mrr":1.0,"map":0.6666666666666666},"q06":{"ndcg@5":0.9941825709069458,"ndcg@10":0.9941825709069458,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q07":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q08":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q09":{"ndcg@5":0.9580414003446834,"ndcg@10":0.9580414003446834,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0},"q10":{"ndcg@5":1.0,"ndcg@10":1.0,"precision@5":0.4,"recall@10":1.0,"mrr":1.0,"map":1.0}}}],"comparison":{"baseline":"bm25","primary_metric":"ndcg@10","ranking":["semantic","hybrid","bm25"],"deltas":[{"system":"semantic","metric":"ndcg@5","baseline":0.5304716019917938,"value":0.9865450434615728,"delta":0.456073441469779,"relative":0.8597509079794894},{"system":"semantic","metric":"ndcg@10","baseline":0.5304716019917938,"value":0.9865450434615728,"delta":0.456073441469779,"relative":0.8597509079794894},{"system":"semantic","metric":"precision@5","baseline":0.22000000000000003,"value":0.42000000000000004,"delta":0.2,"relative":0.9090909090909091},{"system":"semantic","metric":"recall@10","baseline":0.4833333333333333,"value":0.9666666666666666,"delta":0.4833333333333333,"relative":1.0},{"system":"semantic","metric":"mrr","baseline":0.8,"value":1.0,"delta":0.19999999999999996,"relative":0.24999999999999994},{"system":"semantic","metric":"map","baseline":0.4305555555555555,"value":0.9666666666666666,"delta":0.536111111111111,"relative":1.2451612903225804},{"system":"hybrid","metric":"ndcg@5","baseline":0.5304716019917938,"value":0.9767451506431298,"delta":0.44627354865133606,"relative":0.8412769825485206},{"system":"hybrid","metric":"ndcg@10","baseline":0.5304716019917938,"value":0.9767451506431298,"delta":0.44627354865133606,"relative":0.8412769825485206},{"system":"hybrid","metric":"precision@5","baseline":0.22000000000000003,"value":0.42000000000000004,"delta":0.2,"relative":0.9090909090909091},{"system":"hybrid","metric":"recall@10","baseline":0.4833333333333333,"value":0.9666666666666666,"delta":0.4833333333333333,"relative":1.0},{"system":"hybrid","metric":"mrr","baseline":0.8,"value":1.0,"delta":0.19999999999999996,"relative":0.24999999999999994},{"system":"hybrid","metric":"map","baseline":0.4305555555555555,"value":0.9583333333333334,"delta":0.5277777777777779,"relative":1.2258064516129037}],"significance":[{"system":"semantic","metric":"ndcg@10","n":10,"wins":10,"ties":0,"losses":0,"p_value":0.001999800019998},{"system":"hybrid","metric":"ndcg@10","n":10,"wins":10,"ties":0,"losses":0,"p_value":0.001999800019998}]},"by_language":{"bm25":{"en":{"mean":0.6292214063266728,"n":5},"fa":{"mean":0.43172179765691465,"n":5}},"semantic":{"en":{"mean":0.9730900869231457,"n":5},"fa":{"mean":1.0,"n":5}},"hybrid":{"en":{"mean":0.963045507035934,"n":5},"fa":{"mean":0.9904447942503258,"n":5}}},"judging":{"judge":"mock","fingerprint":"mock:desc=0","panel":null,"pairs":49,"label_distribution":{"0":26,"1":10,"2":5,"3":8},"agreement":null,"gold_agreement":{"threshold":2,"judge":{"n":30,"exact":0.3333333333333333,"within_one":0.6666666666666666,"binary_agreement":0.6333333333333333,"cohen_kappa":0.0825688073394496,"weighted_kappa":0.2574257425742572,"binary_kappa":0.326530612244898,"mean_bias":-1.0,"confusion":{"rows":"gold","columns":"judge","categories":[0,1,2,3],"matrix":[[0,2,0,0],[5,2,1,0],[0,0,0,0],[6,4,2,8]]}},"members":{}}},"cost":{"judgments":49,"cache_hits":0,"requests":0,"prompt_tokens":0,"completion_tokens":0,"total_tokens":0,"cost_usd":0.0,"known_cost_usd":0,"unpriced_models":[],"models":{},"prices":{},"budget":{"max_cost_usd":null,"max_tokens":null,"max_judgments":null,"exhausted":false,"reason":null,"skipped_pairs":0}},"details":{"queries":{"q01":{"text":"wireless noise cancelling headphones","lang":"en"},"q02":{"text":"samsung galaxy phone 128gb","lang":"en"},"q03":{"text":"usb-c fast charger 65w","lang":"en"},"q04":{"text":"gaming laptop rtx","lang":"en"},"q05":{"text":"wireless mouse","lang":"en"},"q06":{"text":"هدفون بی سیم نویز کنسلینگ","lang":"fa"},"q07":{"text":"گوشی سامسونگ ۱۲۸ گیگابایت","lang":"fa"},"q08":{"text":"شارژر ۶۵ وات USB-C","lang":"fa"},"q09":{"text":"لپ تاپ گيمينگ","lang":"fa"},"q10":{"text":"قاب گوشی آیفون ۱۵","lang":"fa"}},"rankings":{"bm25":{"q01":["p06","p07","p05","p14","p02"],"q02":["p02","p03","p07","p04","p01"],"q03":["p08","p09","p14","p04","p01"],"q04":["p12","p11","p13"],"q05":["p14","p06","p07"],"q06":["p16","p21"],"q07":["p21","p15"],"q08":["p17","p21"],"q09":[],"q10":["p19","p21"]},"semantic":{"q01":["p06","p16","p05","p07","p02"],"q02":["p03","p15","p02","p04","p01"],"q03":["p08","p17","p09","p04","p14"],"q04":["p12","p18","p11","p13"],"q05":["p14","p20","p06"],"q06":["p16","p06","p05","p07","p21"],"q07":["p15","p03","p02","p04"],"q08":["p17","p08","p09"],"q09":["p18","p12","p11","p13"],"q10":["p19","p10","p01","p09"]},"hybrid":{"q01":["p06","p16","p07","p05"],"q02":["p03","p15","p02","p07"],"q03":["p08","p17","p09"],"q04":["p12","p18","p13","p11"],"q05":["p14","p20","p07"],"q06":["p16","p06","p07","p05"],"q07":["p15","p03","p02"],"q08":["p17","p08","p09","p21"],"q09":["p18","p12","p13"],"q10":["p19","p10","p09","p01"]}},"labels":{"q01":{"p02":{"grade":0,"source":"judge","reason":"matched 0/4 query terms: none"},"p05":{"grade":1,"source":"gold"},"p06":{"grade":3,"source":"gold"},"p07":{"grade":1,"source":"gold"},"p14":{"grade":1,"source":"judge","reason":"matched 1/4 query terms: wireless"},"p16":{"grade":3,"source":"gold"}},"q02":{"p01":{"grade":1,"source":"judge","reason":"matched 1/4 query terms: 128gb"},"p02":{"grade":1,"source":"gold"},"p03":{"grade":3,"source":"gold"},"p04":{"grade":0,"source":"judge","reason":"matched 0/4 query terms: none"},"p07":{"grade":2,"source":"judge","reason":"matched 2/4 query terms: galaxy, samsung"},"p15":{"grade":3,"source":"gold"}},"q03":{"p01":{"grade":0,"source":"judge","reason":"matched 0/5 query terms: none"},"p04":{"grade":0,"source":"judge","reason":"matched 0/5 query terms: none"},"p08":{"grade":3,"source":"gold"},"p09":{"grade":1,"source":"gold"},"p14":{"grade":0,"source":"judge","reason":"matched 0/5 query terms: none"},"p17":{"grade":3,"source":"gold"}},"q04":{"p11":{"grade":0,"source":"gold"},"p12":{"grade":3,"source":"gold"},"p13":{"grade":0,"source":"judge","reason":"matched 0/3 query terms: none"},"p18":{"grade":3,"source":"gold"}},"q05":{"p06":{"grade":2,"source":"judge","reason":"matched 1/2 query terms: wireless"},"p07":{"grade":0,"source":"judge","reason":"matched 0/2 query terms: none"},"p14":{"grade":3,"source":"gold"},"p20":{"grade":3,"source":"gold"}},"q06":{"p05":{"grade":1,"source":"gold"},"p06":{"grade":3,"source":"gold"},"p07":{"grade":0,"source":"judge","reason":"matched 0/5 query terms: none"},"p16":{"grade":3,"source":"gold"},"p21":{"grade":0,"source":"judge","reason":"matched 0/5 query terms: none"}},"q07":{"p02":{"grade":1,"source":"gold"},"p03":{"grade":3,"source":"gold"},"p04":{"grade":0,"source":"judge","reason":"matched 0/4 query terms: none"},"p15":{"grade":3,"source":"gold"},"p21":{"grade":0,"source":"judge","reason":"matched 0/4 query terms: none"}},"q08":{"p08":{"grade":3,"source":"gold"},"p09":{"grade":1,"source":"gold"},"p17":{"grade":3,"source":"gold"},"p21":{"grade":0,"source":"judge","reason":"matched 0/5 query terms: none"}},"q09":{"p11":{"grade":1,"source":"gold"},"p12":{"grade":3,"source":"gold"},"p13":{"grade":0,"source":"judge","reason":"matched 0/3 query terms: none"},"p18":{"grade":3,"source":"gold"}},"q10":{"p01":{"grade":0,"source":"gold"},"p09":{"grade":0,"source":"judge","reason":"matched 0/4 query terms: none"},"p10":{"grade":3,"source":"gold"},"p19":{"grade":3,"source":"gold"},"p21":{"grade":0,"source":"judge","reason":"matched 0/4 query terms: none"}}},"products":{"p01":{"title":"Apple iPhone 15 128GB Black","brand":"Apple","category":"Smartphones","price":"799 USD"},"p02":{"title":"Samsung Galaxy S24 256GB Onyx Black","brand":"Samsung","category":"Smartphones","price":"859 USD"},"p03":{"title":"Samsung Galaxy A55 5G 128GB Awesome Navy","brand":"Samsung","category":"Smartphones","price":"449 USD"},"p04":{"title":"Xiaomi Redmi Note 13 Pro 256GB","brand":"Xiaomi","category":"Smartphones","price":"329 USD"},"p05":{"title":"Apple AirPods Pro (2nd generation) with USB-C","brand":"Apple","category":"Earbuds","price":"249 USD"},"p06":{"title":"Sony WH-1000XM5 Wireless Noise Cancelling Headphones","brand":"Sony","category":"Headphones","price":"399 USD"},"p07":{"title":"Samsung Galaxy Buds2 Pro","brand":"Samsung","category":"Earbuds","price":"229 USD"},"p08":{"title":"Anker 735 USB-C Charger 65W GaN","brand":"Anker","category":"Chargers","price":"49 USD"},"p09":{"title":"Apple 20W USB-C Power Adapter","brand":"Apple","category":"Chargers","price":"19 USD"},"p10":{"title":"Silicone Case for iPhone 15 with MagSafe","brand":"Apple","category":"Phone Cases","price":"49 USD"},"p11":{"title":"Lenovo IdeaPad Slim 5 Laptop 16GB RAM 512GB SSD","brand":"Lenovo","category":"Laptops","price":"699 USD"},"p12":{"title":"ASUS ROG Strix G16 Gaming Laptop RTX 4060","brand":"ASUS","category":"Laptops","price":"1399 USD"},"p13":{"title":"Apple MacBook Air 13 M3 8GB 256GB","brand":"Apple","category":"Laptops","price":"1099 USD"},"p14":{"title":"Logitech MX Master 3S Wireless Mouse","brand":"Logitech","category":"Mice","price":"99 USD"},"p15":{"title":"گوشی موبایل سامسونگ گلکسی A55 ظرفیت 128 گیگابایت","brand":"سامسونگ","category":"گوشی موبایل","price":"22,500,000 تومان"},"p16":{"title":"هدفون بی سیم سونی WH-1000XM5 با قابلیت نویز کنسلینگ","brand":"سونی","category":"هدفون","price":"18,900,000 تومان"},"p17":{"title":"شارژر دیواری انکر 65 وات USB-C","brand":"انکر","category":"شارژر","price":"2,400,000 تومان"},"p18":{"title":"لپ تاپ گیمینگ ایسوس ROG Strix G16 با گرافیک RTX 4060","brand":"ایسوس","category":"لپ تاپ","price":"79,000,000 تومان"},"p19":{"title":"قاب سیلیکونی آیفون 15","brand":"اپل","category":"قاب گوشی","price":"1,200,000 تومان"},"p20":{"title":"ماوس بی سیم لاجیتک MX Master 3S","brand":"لاجیتک","category":"ماوس","price":"5,900,000 تومان"},"p21":{"title":"کتری برقی فیلیپس 1.7 لیتر","brand":"فیلیپس","category":"لوازم آشپزخانه","price":"3,100,000 تومان"}}}}</script>
+<script>(function () {
+  "use strict";
+  var DATA = JSON.parse(document.getElementById("report-data").textContent);
+  var SVG = "http://www.w3.org/2000/svg";
+  var cfg = DATA.config;
+  var primary = cfg.primary_metric;
+  var systems = DATA.systems;
+  var names = systems.map(function (s) { return s.name; });
+  var details = DATA.details || null;
+
+  function $(id) { return document.getElementById(id); }
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    if (attrs) {
+      Object.keys(attrs).forEach(function (key) {
+        if (key === "text") node.textContent = attrs[key];
+        else if (key === "class") node.className = attrs[key];
+        else node.setAttribute(key, attrs[key]);
+      });
+    }
+    (children || []).forEach(function (child) { if (child) node.appendChild(child); });
+    return node;
+  }
+  function svg(tag, attrs) {
+    var node = document.createElementNS(SVG, tag);
+    Object.keys(attrs || {}).forEach(function (key) { node.setAttribute(key, attrs[key]); });
+    return node;
+  }
+  function fmt(v, d) { return v === null || v === undefined ? "n/a" : Number(v).toFixed(d === undefined ? 4 : d); }
+  function signed(v) { return v === null || v === undefined ? "n/a" : (v >= 0 ? "+" : "") + Number(v).toFixed(4); }
+  function pct(v) { return v === null || v === undefined ? "n/a" : (v >= 0 ? "+" : "") + (v * 100).toFixed(1) + "%"; }
+  function money(v) { return v === null || v === undefined ? "unknown" : "$" + Number(v).toFixed(4); }
+  function td(text, cls) { return el("td", { text: text, class: cls || "" }); }
+  function th(text, cls) { return el("th", { text: text, class: cls || "" }); }
+  function table(headers, rows, numeric) {
+    var head = el("tr", null, headers.map(function (h, i) { return th(h, i && numeric !== false ? "num" : ""); }));
+    var body = el("tbody", null, rows);
+    return el("table", null, [el("thead", null, [head]), body]);
+  }
+  function option(value, label, selected) {
+    var o = el("option", { value: value, text: label || value });
+    if (selected) o.selected = true;
+    return o;
+  }
+
+  function barChart(container, items, opts) {
+    opts = opts || {};
+    container.textContent = "";
+    var width = Math.max(320, container.clientWidth || 640);
+    var rowH = 22, labelW = opts.labelWidth || 140, valueW = 70;
+    var height = items.length * rowH + 10;
+    var chart = svg("svg", { width: width, height: height, role: "img", "aria-label": opts.label || "chart" });
+    var plotW = width - labelW - valueW;
+    var values = items.map(function (it) { return it.value || 0; });
+    var maxAbs = Math.max.apply(null, values.map(Math.abs).concat([opts.max || 0, 1e-9]));
+    var signedMode = values.some(function (v) { return v < 0; });
+    var zero = labelW + (signedMode ? plotW / 2 : 0);
+    var scale = (signedMode ? plotW / 2 : plotW) / maxAbs;
+    items.forEach(function (it, i) {
+      var y = 5 + i * rowH;
+      var v = it.value || 0;
+      var label = svg("text", { x: labelW - 6, y: y + 14, "text-anchor": "end" });
+      label.textContent = it.label.length > 22 ? it.label.slice(0, 21) + "\u2026" : it.label;
+      var title = svg("title", {});
+      title.textContent = it.label + ": " + (it.value === null ? "n/a" : fmt(it.value));
+      var w = Math.abs(v) * scale;
+      var bar = svg("rect", {
+        x: v >= 0 ? zero : zero - w, y: y + 3, width: Math.max(w, it.value === null ? 0 : 1), height: rowH - 8,
+        class: "bar" + (signedMode || opts.colorSign ? (v >= 0 ? " pos" : " neg") : ""), rx: 2
+      });
+      bar.appendChild(title);
+      var text = svg("text", { x: labelW + plotW + 6, y: y + 14 });
+      text.textContent = it.value === null ? "n/a" : (signedMode ? signed(v) : fmt(v));
+      chart.appendChild(label); chart.appendChild(bar); chart.appendChild(text);
+    });
+    if (signedMode) chart.appendChild(svg("line", { x1: zero, x2: zero, y1: 0, y2: height, class: "axis" }));
+    container.appendChild(chart);
+  }
+
+  function renderOverview() {
+    var ds = DATA.dataset, labels = DATA.labels, cost = DATA.cost || {};
+    var cards = [
+      ["Queries", ds.queries], ["Products", ds.products], ["Gold labels", ds.gold_labels],
+      ["Judged", labels.judged], ["From cache", labels.cached], ["Unlabeled", labels.unlabeled],
+      ["Tokens", cost.total_tokens === undefined ? "n/a" : cost.total_tokens.toLocaleString()],
+      ["Cost", cost.requests ? money(cost.cost_usd) : "$0"]
+    ];
+    var box = $("overview-cards");
+    cards.forEach(function (c) {
+      box.appendChild(el("div", { class: "card" }, [el("div", { class: "k", text: c[0] }), el("div", { class: "v", text: String(c[1]) })]));
+    });
+    $("meta").textContent = "Judge: " + (labels.judge || "none") + " \u00b7 depth " + cfg.depth +
+      " \u00b7 relevant when grade \u2265 " + cfg.threshold + " \u00b7 baseline " + cfg.baseline +
+      " \u00b7 generated " + DATA.generated_at + " by llm-search-eval " + DATA.tool.version;
+  }
+
+  function renderSummary() {
+    var metrics = cfg.metrics;
+    var best = {};
+    metrics.forEach(function (m) {
+      var vals = systems.map(function (s) { return s.metrics[m].mean; }).filter(function (v) { return v !== null; });
+      best[m] = vals.length ? Math.max.apply(null, vals) : null;
+    });
+    var rows = systems.map(function (s) {
+      return el("tr", null, [td(s.name)].concat(metrics.map(function (m) {
+        var v = s.metrics[m].mean;
+        var isBest = v !== null && systems.length > 1 && Math.abs(v - best[m]) < 1e-12;
+        return td(fmt(v), "num" + (isBest ? " best" : ""));
+      })));
+    });
+    $("summary-table").appendChild(table(["System"].concat(metrics), rows));
+    var select = $("metric-select");
+    metrics.forEach(function (m) { select.appendChild(option(m, m, m === primary)); });
+    function draw() {
+      var m = select.value;
+      barChart($("metric-chart"), systems.map(function (s) { return { label: s.name, value: s.metrics[m].mean }; }), { max: 1, label: m });
+    }
+    select.addEventListener("change", draw);
+    draw();
+  }
+
+  function renderComparison() {
+    var comp = DATA.comparison;
+    var section = $("comparison");
+    if (systems.length < 2) { section.hidden = true; return; }
+    var rows = comp.significance.map(function (t) {
+      var d = comp.deltas.filter(function (x) { return x.system === t.system && x.metric === t.metric; })[0] || {};
+      var cls = d.delta > 0 ? "num pos" : d.delta < 0 ? "num neg" : "num";
+      return el("tr", null, [td(t.system), td(signed(d.delta), cls), td(pct(d.relative), cls),
+        td(t.wins + " / " + t.ties + " / " + t.losses, "num"),
+        td(t.p_value === null ? "n/a" : t.p_value.toFixed(4) + (t.p_value < 0.05 ? " *" : ""), "num")]);
+    });
+    $("comparison-table").appendChild(table(["System", "\u0394 " + comp.primary_metric, "Relative", "Win / tie / loss", "p-value"], rows));
+    var select = $("compare-select");
+    names.filter(function (n) { return n !== comp.baseline; }).forEach(function (n, i) { select.appendChild(option(n, n, i === 0)); });
+    function draw() {
+      var a = systems.filter(function (s) { return s.name === select.value; })[0];
+      var b = systems.filter(function (s) { return s.name === comp.baseline; })[0];
+      var items = [];
+      Object.keys(b.per_query).forEach(function (q) {
+        var x = a.per_query[q][primary], y = b.per_query[q][primary];
+        if (x === null || y === null || Math.abs(x - y) < 1e-12) return;
+        var text = details && details.queries[q] ? q + " " + details.queries[q].text : q;
+        items.push({ label: text, value: x - y });
+      });
+      items.sort(function (p, q) { return q.value - p.value; });
+      $("delta-note").textContent = items.length ? "Per-query " + primary + " change of " + select.value + " versus " + comp.baseline + ", queries with no change omitted." : "No query changed between " + select.value + " and " + comp.baseline + ".";
+      barChart($("delta-chart"), items, { labelWidth: 220, label: "per-query delta" });
+    }
+    select.addEventListener("change", draw);
+    draw();
+  }
+
+  function renderLanguages() {
+    var by = DATA.by_language;
+    var langs = {};
+    Object.keys(by).forEach(function (s) { Object.keys(by[s]).forEach(function (l) { langs[l] = true; }); });
+    langs = Object.keys(langs).sort();
+    if (langs.length < 2) { $("languages").hidden = true; return; }
+    var rows = Object.keys(by).map(function (s) {
+      return el("tr", null, [td(s)].concat(langs.map(function (l) { return td(fmt(by[s][l].mean) + " (n=" + by[s][l].n + ")", "num"); })));
+    });
+    $("language-table").appendChild(table(["System"].concat(langs), rows));
+  }
+
+  function renderJudging() {
+    var j = DATA.judging;
+    if (!j) { $("judging").hidden = true; return; }
+    var dist = j.label_distribution;
+    barChart($("label-chart"), ["3", "2", "1", "0"].map(function (g) { return { label: "grade " + g, value: dist[g] || 0 }; }), { label: "label distribution" });
+    var info = $("judging-info");
+    info.appendChild(el("p", { text: "Judge: " + j.judge + ". " + j.pairs + " judged pair(s)." }));
+    if (j.agreement) {
+      var a = j.agreement;
+      var k = a.krippendorff_alpha;
+      info.appendChild(table(["Statistic", "Value"], [
+        el("tr", null, [td("Fleiss' kappa"), td(fmt(a.fleiss_kappa, 3), "num")]),
+        el("tr", null, [td("Krippendorff's alpha (ordinal)"), td(fmt(k.ordinal, 3), "num")]),
+        el("tr", null, [td("Krippendorff's alpha (nominal)"), td(fmt(k.nominal, 3), "num")]),
+        el("tr", null, [td("Unanimous items"), td(a.unanimous === null ? "n/a" : (a.unanimous * 100).toFixed(1) + "%", "num")])
+      ]));
+      info.appendChild(el("h3", { text: "Pairwise agreement" }));
+      info.appendChild(table(["Judges", "n", "Agreement", "Cohen's kappa", "Weighted kappa"], a.pairwise.map(function (p) {
+        return el("tr", null, [td(p.a + " / " + p.b), td(String(p.n), "num"), td(p.percent_agreement === null ? "n/a" : (p.percent_agreement * 100).toFixed(1) + "%", "num"), td(fmt(p.cohen_kappa, 3), "num"), td(fmt(p.weighted_kappa, 3), "num")]);
+      })));
+    }
+    var g = j.gold_agreement;
+    if (g) {
+      var box = $("gold-info");
+      box.appendChild(el("h3", { text: "Agreement with gold labels" }));
+      var raters = [[j.judge, g.judge]].concat(Object.keys(g.members).map(function (n) { return [n, g.members[n]]; }));
+      box.appendChild(table(["Rater", "n", "Exact", "Within one", "Binary", "Weighted kappa", "Bias"], raters.map(function (r) {
+        var s = r[1];
+        return el("tr", null, [td(r[0]), td(String(s.n), "num"), td((s.exact * 100).toFixed(1) + "%", "num"), td((s.within_one * 100).toFixed(1) + "%", "num"), td((s.binary_agreement * 100).toFixed(1) + "%", "num"), td(fmt(s.weighted_kappa, 3), "num"), td(signed(s.mean_bias), "num")]);
+      })));
+      var m = g.judge.confusion;
+      box.appendChild(el("p", { class: "note", text: "Confusion matrix: rows are gold grades, columns are judge grades." }));
+      box.appendChild(table(["gold \\ judge"].concat(m.categories.map(String)), m.matrix.map(function (row, i) {
+        return el("tr", null, [td(String(m.categories[i]))].concat(row.map(function (c) { return td(String(c), "num"); })));
+      })));
+    }
+  }
+
+  function renderCost() {
+    var c = DATA.cost;
+    if (!c || (!c.requests && !c.cache_hits && !c.budget.skipped_pairs)) { $("cost").hidden = true; return; }
+    var rows = Object.keys(c.models).map(function (name) {
+      var m = c.models[name];
+      return el("tr", null, [td(name), td(String(m.requests), "num"), td(m.prompt_tokens.toLocaleString(), "num"), td(m.completion_tokens.toLocaleString(), "num"), td(money(m.cost_usd), "num")]);
+    });
+    rows.push(el("tr", null, [td("Total"), td(String(c.requests), "num"), td(c.prompt_tokens.toLocaleString(), "num"), td(c.completion_tokens.toLocaleString(), "num"), td(money(c.cost_usd), "num best")]));
+    $("cost-table").appendChild(table(["Model", "Requests", "Input tokens", "Output tokens", "Cost"], rows));
+    var notes = [c.cache_hits + " judgment(s) served from cache at no cost."];
+    if (c.unpriced_models.length) notes.push("No price configured for: " + c.unpriced_models.join(", ") + ".");
+    if (c.budget.exhausted) notes.push("Budget reached (" + c.budget.reason + "); " + c.budget.skipped_pairs + " pair(s) were not judged.");
+    $("cost-note").textContent = notes.join(" ");
+  }
+
+  function renderQueries() {
+    if (!details) { $("queries").hidden = true; return; }
+    var qids = Object.keys(details.queries);
+    var body = el("tbody");
+    var rows = {};
+    qids.forEach(function (q) {
+      var info = details.queries[q];
+      var cells = [td(q), el("td", { dir: "auto", text: info.text }), td(info.lang)];
+      systems.forEach(function (s) { cells.push(td(fmt(s.per_query[q][primary], 3), "num")); });
+      var tr = el("tr", { "data-q": q }, cells);
+      tr.addEventListener("click", function () { showQuery(q); });
+      rows[q] = tr;
+      body.appendChild(tr);
+    });
+    var head = el("tr", null, [th("Id"), th("Query"), th("Lang")].concat(names.map(function (n) { return th(n + " " + primary, "num"); })));
+    $("query-table").appendChild(el("table", { class: "clickable" }, [el("thead", null, [head]), body]));
+    $("query-filter").addEventListener("input", function (e) {
+      var needle = e.target.value.toLowerCase();
+      qids.forEach(function (q) {
+        var hay = (q + " " + details.queries[q].text).toLowerCase();
+        rows[q].hidden = needle && hay.indexOf(needle) < 0;
+      });
+    });
+    function showQuery(q) {
+      Object.keys(rows).forEach(function (k) { rows[k].className = k === q ? "selected" : ""; });
+      var box = $("query-detail");
+      box.textContent = "";
+      var info = details.queries[q];
+      box.appendChild(el("h3", { dir: "auto", text: q + ": " + info.text }));
+      var labels = details.labels[q] || {};
+      var lists = el("div", { class: "lists" });
+      systems.forEach(function (s) {
+        var ranked = details.rankings[s.name][q] || [];
+        var ol = el("ol");
+        ranked.forEach(function (pid) {
+          var l = labels[pid];
+          var p = details.products[pid];
+          var grade = l ? l.grade : null;
+          var badge = el("span", { class: "badge " + (grade === null ? "gx" : "g" + grade), text: grade === null ? "?" : String(grade) });
+          var title = el("span", { dir: "auto", text: p ? p.title : pid + " (not in catalog)" });
+          var src = el("span", { class: "src", text: " " + pid + (l ? " \u00b7 " + l.source : " \u00b7 unlabeled") });
+          var parts = [badge, title, src];
+          if (l && l.reason) parts.push(el("span", { class: "reason", dir: "auto", text: l.reason }));
+          if (l && l.votes) parts.push(el("span", { class: "reason", text: "votes: " + Object.keys(l.votes).map(function (k) { return k + "=" + (l.votes[k] === null ? "x" : l.votes[k]); }).join(", ") }));
+          ol.appendChild(el("li", null, parts));
+        });
+        if (!ranked.length) ol.appendChild(el("li", { class: "muted", text: "no results" }));
+        var metrics = cfg.metrics.map(function (m) { return m + " " + fmt(s.per_query[q][m], 3); }).join(" \u00b7 ");
+        lists.appendChild(el("div", { class: "list" }, [el("h3", { text: s.name }), el("p", { class: "note", text: metrics }), ol]));
+      });
+      box.appendChild(lists);
+      var missing = Object.keys(labels).filter(function (pid) {
+        return labels[pid].grade >= cfg.threshold && !systems.some(function (s) { return (details.rankings[s.name][q] || []).indexOf(pid) >= 0; });
+      });
+      if (missing.length) box.appendChild(el("p", { class: "note", text: "Relevant products no system returned in the top " + cfg.depth + ": " + missing.join(", ") }));
+      box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    if (qids.length) showQuery(qids[0]);
+  }
+
+  renderOverview();
+  renderSummary();
+  renderComparison();
+  renderLanguages();
+  renderJudging();
+  renderCost();
+  renderQueries();
+})();
+</script>
+</body>
+</html>

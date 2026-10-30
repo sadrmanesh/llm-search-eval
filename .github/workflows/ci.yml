@@ -22,9 +22,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install ruff
+      - run: pip install ruff "mypy>=1.10"
       - run: ruff check --output-format=github .
       - run: ruff format --check .
+      - run: mypy
 
   test:
     name: Test (Python ${{ matrix.python-version }})
@@ -32,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -52,6 +53,69 @@ jobs:
             -s bm25=examples/electronics/runs/bm25.jsonl \
             -s semantic=examples/electronics/runs/semantic.csv \
             --judge mock -o reports --quiet
+          test -s reports/report.html
+          llm-search-eval gate reports/report.json --min ndcg@10=0.4
+          llm-search-eval report reports/report.json --format md,html -o rerendered
+
+  action:
+    name: GitHub Action
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Evaluate with a judge panel and a passing gate
+        id: pass
+        uses: ./
+        with:
+          queries: examples/electronics/queries.jsonl
+          products: examples/electronics/products.jsonl
+          qrels: examples/electronics/qrels.csv
+          systems: |
+            bm25=examples/electronics/runs/bm25.jsonl
+            semantic=examples/electronics/runs/semantic.csv
+            hybrid=examples/electronics/runs/hybrid.trec
+          judges: |
+            mock=noise=0.2,seed=1
+            mock=noise=0.2,seed=2
+            mock=noise=0.2,seed=3
+          calibrate: "true"
+          permutations: "2000"
+          min: ndcg@10=0.4
+          max-drop: "0.05"
+          output-dir: action-report
+      - name: Check outputs
+        env:
+          PASSED: ${{ steps.pass.outputs.passed }}
+          REPORT_JSON: ${{ steps.pass.outputs.report-json }}
+          REPORT_HTML: ${{ steps.pass.outputs.report-html }}
+        run: |
+          test "$PASSED" = "true"
+          test -s "$REPORT_JSON"
+          test -s "$REPORT_HTML"
+          test -s action-report/cost.json
+      - name: Evaluate with a gate that must fail
+        id: fail
+        continue-on-error: true
+        uses: ./
+        with:
+          queries: examples/electronics/queries.jsonl
+          products: examples/electronics/products.jsonl
+          qrels: examples/electronics/qrels.csv
+          systems: |
+            examples/electronics/runs/bm25.jsonl
+          permutations: "0"
+          min: ndcg@10=0.99
+          output-dir: failing-report
+      - name: Check that the regression failed the step
+        env:
+          OUTCOME: ${{ steps.fail.outcome }}
+          PASSED: ${{ steps.fail.outputs.passed }}
+        run: |
+          test "$OUTCOME" = "failure"
+          test "$PASSED" = "false"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: search-evaluation-report
+          path: action-report/
 
   build:
     name: Build distribution
