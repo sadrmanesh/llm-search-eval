@@ -75,7 +75,7 @@ pip install llm-search-eval
 or straight from a release tag:
 
 ```bash
-pip install "git+https://github.com/sadrmanesh/llm-search-eval@v0.3.0"
+pip install "git+https://github.com/sadrmanesh/llm-search-eval@v0.3.1"
 ```
 
 Optional extras let the connectors reuse official clients: `llm-search-eval[elasticsearch]`, `[opensearch]`, and `[algolia]`. They are not needed for the default HTTP mode.
@@ -316,7 +316,7 @@ It checks metric floors and drops against the baseline system or against a `--re
 The repository is also a reusable GitHub Action that runs the evaluation, applies the gate, writes the result to the job summary, and posts it as a pull request comment that is updated on every push:
 
 ```yaml
-- uses: sadrmanesh/llm-search-eval@v0.3.0
+- uses: sadrmanesh/llm-search-eval@v0.3.1
   env:
     OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   with:

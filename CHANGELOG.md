@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-30
+
+### Changed
+
+- Shortened the GitHub Action description so the action can be listed on GitHub Marketplace.
+
 ## [0.3.0] - 2026-10-30
 
 Statistical depth and a tighter pull request loop: pairwise judging, confidence intervals, query sampling, cost estimates before a run, sticky pull request comments, and three more connectors.
@@ -75,6 +81,8 @@ Initial release.
 - Bilingual electronics example dataset with three systems and a sample report.
 - Continuous integration with ruff and pytest on Python 3.10, 3.11, and 3.12.
 
-[Unreleased]: https://github.com/sadrmanesh/llm-search-eval/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/sadrmanesh/llm-search-eval/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/sadrmanesh/llm-search-eval/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/sadrmanesh/llm-search-eval/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/sadrmanesh/llm-search-eval/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/sadrmanesh/llm-search-eval/releases/tag/v0.1.0
