@@ -79,6 +79,7 @@ def render_markdown(report: EvaluationReport | dict[str, Any]) -> str:
     langs = ", ".join(f"{k}: {v}" for k, v in ds["languages"].items())
     out += [
         f"- **Queries:** {ds['queries']} ({langs})",
+        *_sampling_line(ds.get("sampling")),
         f"- **Products:** {ds['products']}",
         f"- **Gold labels:** {ds['gold_labels']}",
         f"- **Judge:** {labels['judge'] or 'none (unlabeled results count as not relevant)'}",
@@ -192,6 +193,19 @@ def render_markdown(report: EvaluationReport | dict[str, Any]) -> str:
         )
         out.append("")
 
+    stratum = data.get("by_stratum")
+    if stratum:
+        groups = sorted({g for v in stratum["systems"].values() for g in v})
+        out += [f"## `{primary}` by `{_escape(stratum['field'])}`", ""]
+        out += _table(
+            ["System", *(_escape(g) for g in groups)],
+            (
+                [f"`{_escape(name)}`"] + [f"{_fmt(v[g]['mean'])} (n={v[g]['n']})" for g in groups]
+                for name, v in stratum["systems"].items()
+            ),
+        )
+        out.append("")
+
     out += ["## Label coverage", ""]
     out += _table(
         ["System", "Queries answered", f"Labeled in top {cfg['depth']}", "Unknown products"],
@@ -228,6 +242,22 @@ def render_markdown(report: EvaluationReport | dict[str, Any]) -> str:
         "",
     ]
     return "\n".join(out)
+
+
+def _sampling_line(sampling: dict[str, Any] | None) -> list[str]:
+    if not sampling:
+        return []
+    line = (
+        f"- **Sample:** {sampling['sampled']} of {sampling['population']} queries "
+        f"(seed {sampling['seed']}"
+    )
+    if sampling.get("stratify_by"):
+        parts = ", ".join(
+            f"{_escape(name)}: {s['sampled']}/{s['population']}"
+            for name, s in sampling["strata"].items()
+        )
+        line += f", stratified by `{_escape(sampling['stratify_by'])}`: {parts}"
+    return [line + ")"]
 
 
 def _ratio(value: float | None) -> str:

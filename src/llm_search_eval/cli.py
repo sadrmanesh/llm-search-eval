@@ -1,8 +1,8 @@
 """Command line interface for ``llm-search-eval``.
 
 Commands: ``run`` (evaluate), ``validate`` (check inputs), ``report`` (re-render
-a saved report), ``gate`` (fail CI on regressions) and ``fetch`` (collect a run
-from a live search backend).
+a saved report), ``gate`` (fail CI on regressions), ``fetch`` (collect a run
+from a live search backend) and ``sample`` (draw a query sample).
 """
 
 from __future__ import annotations
@@ -56,6 +56,47 @@ def _system_arg(value: str) -> tuple[str, str]:
     if not name or not path:
         raise argparse.ArgumentTypeError("expected NAME=PATH")
     return name, path
+
+
+def _sample_size(value: str) -> int | float:
+    text = value.strip()
+    try:
+        if text.endswith("%"):
+            number: int | float = float(text[:-1]) / 100
+        elif "." in text:
+            number = float(text)
+        else:
+            number = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "expected a number of queries (200), a fraction (0.25) or a percentage (25%)"
+        ) from None
+    if number <= 0 or (isinstance(number, float) and number > 1):
+        raise argparse.ArgumentTypeError("sample must be a positive count or a fraction up to 1")
+    return number
+
+
+def _add_sampling_args(p: argparse.ArgumentParser) -> None:
+    g = p.add_argument_group("sampling")
+    g.add_argument(
+        "--sample",
+        type=_sample_size,
+        metavar="SIZE",
+        help="evaluate a random sample of queries: a count (200), fraction (0.25) or 25%%",
+    )
+    g.add_argument(
+        "--stratify",
+        metavar="FIELD",
+        help="sample in proportion to a query field (lang or an extra column) "
+        "and break the primary metric down by it",
+    )
+    g.add_argument(
+        "--min-per-stratum",
+        type=int,
+        default=1,
+        metavar="N",
+        help="queries drawn from each group at least (default: 1)",
+    )
 
 
 def _add_dataset_args(p: argparse.ArgumentParser) -> None:
@@ -171,6 +212,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="confidence level of the intervals (default: %(default)s)",
     )
 
+    _add_sampling_args(run)
+
     o = run.add_argument_group("output")
     o.add_argument("--output-dir", "-o", default="reports", help="report directory")
     o.add_argument(
@@ -188,6 +231,17 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("report", help="path to report.json")
     report.add_argument("--output-dir", "-o", help="directory (default: next to report.json)")
     report.add_argument("--format", default="html", help="md, html, or both (default: html)")
+
+    sample = sub.add_parser(
+        "sample",
+        help="write a random, optionally stratified, sample of a queries file",
+        description="Draw a reproducible sample of queries, for example to label a "
+        "manageable subset or to keep CI fast. The output is JSONL.",
+    )
+    sample.add_argument("--queries", "-q", required=True, help="queries file")
+    sample.add_argument("--output", "-o", required=True, help="JSONL file to write")
+    sample.add_argument("--seed", type=int, default=13)
+    _add_sampling_args(sample)
 
     gate = sub.add_parser(
         "gate",
@@ -360,7 +414,14 @@ def cmd_run(args: argparse.Namespace) -> int:
         title=args.title,
         calibrate=args.calibrate,
         calibration_sample=args.calibration_sample,
+        sample_size=args.sample,
+        stratify_by=args.stratify,
+        min_per_stratum=args.min_per_stratum,
     )
+    if args.stratify and args.sample is None and not args.quiet:
+        print(
+            f"note: no --sample; reporting every query, grouped by {args.stratify}", file=sys.stderr
+        )
     try:
         report = evaluate(
             dataset,
@@ -398,6 +459,27 @@ def cmd_run(args: argparse.Namespace) -> int:
     if failed:
         print(f"error: {failed} judgment(s) failed; see report.json for details", file=sys.stderr)
         return EXIT_JUDGE_FAILURES
+    return EXIT_OK
+
+
+def cmd_sample(args: argparse.Namespace) -> int:
+    from llm_search_eval.io import write_queries
+    from llm_search_eval.sampling import sample_queries
+
+    if args.sample is None:
+        raise ConfigError("--sample is required, for example --sample 200 or --sample 0.1")
+    queries = load_queries(args.queries)
+    result = sample_queries(
+        queries,
+        args.sample,
+        stratify_by=args.stratify,
+        seed=args.seed,
+        min_per_stratum=args.min_per_stratum,
+    )
+    path = write_queries(args.output, result.queries)
+    print(f"wrote {path}: {len(result.queries)} of {result.population} queries", file=sys.stderr)
+    for name, counts in result.strata.items():
+        print(f"  {name}: {counts['sampled']} of {counts['population']}", file=sys.stderr)
     return EXIT_OK
 
 
@@ -562,6 +644,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "report": cmd_report,
             "gate": cmd_gate,
             "fetch": cmd_fetch,
+            "sample": cmd_sample,
         }
         return commands[args.command](args)
     except LLMSearchEvalError as exc:

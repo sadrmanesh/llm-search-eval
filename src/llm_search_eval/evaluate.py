@@ -18,7 +18,8 @@ from llm_search_eval.judges.base import Judge, Vote
 from llm_search_eval.judges.cache import JudgmentCache, cache_key
 from llm_search_eval.judges.panel import JudgePanel
 from llm_search_eval.metrics import DEFAULT_METRICS, Metric, parse_metrics
-from llm_search_eval.models import Dataset, Qrels, Run
+from llm_search_eval.models import Dataset, Qrels, Query, Run
+from llm_search_eval.sampling import SampleResult, query_stratum, sample_queries
 from llm_search_eval.stats import bootstrap_ci, paired_bootstrap_ci
 from llm_search_eval.usage import BudgetExceededError, CostTracker
 
@@ -54,6 +55,13 @@ class EvaluationConfig:
     calibration_sample: int | None = None
     #: Store rankings, labels, and product titles in the report for the HTML dashboard.
     include_details: bool = True
+    #: Evaluate a random sample of the queries: a count, or a fraction in (0, 1].
+    sample_size: int | float | None = None
+    #: Query field (``lang`` or an extra column) for stratified sampling and a
+    #: per-group breakdown of the primary metric.
+    stratify_by: str | None = None
+    #: Smallest number of queries drawn from each group when sampling.
+    min_per_stratum: int = 1
 
     def parsed_metrics(self) -> list[Metric]:
         return parse_metrics(self.metrics)
@@ -87,6 +95,8 @@ class EvaluationConfig:
             raise ConfigError("permutations must be zero or positive")
         if self.calibration_sample is not None and self.calibration_sample < 1:
             raise ConfigError("calibration_sample must be a positive integer")
+        if self.min_per_stratum < 0:
+            raise ConfigError("min_per_stratum must not be negative")
         if self.bootstrap < 0:
             raise ConfigError("bootstrap must be zero or positive")
         if not 0.0 < self.confidence < 1.0:
@@ -534,24 +544,50 @@ def compare_systems(
     }
 
 
-def _by_language(
-    dataset: Dataset, systems: Sequence[dict[str, Any]], primary: Metric
+def _by_group(
+    dataset: Dataset,
+    systems: Sequence[dict[str, Any]],
+    primary: Metric,
+    group: Callable[[Query], str],
 ) -> dict[str, dict[str, dict[str, Any]]]:
-    langs = sorted({q.lang or "und" for q in dataset.queries.values()})
+    keys = sorted({group(q) for q in dataset.queries.values()})
     out: dict[str, dict[str, dict[str, Any]]] = {}
     for system in systems:
         out[system["name"]] = {}
-        for lang in langs:
+        for key in keys:
             values: list[float] = [
                 system["per_query"][qid][primary.label]
                 for qid, q in dataset.queries.items()
-                if (q.lang or "und") == lang and system["per_query"][qid][primary.label] is not None
+                if group(q) == key and system["per_query"][qid][primary.label] is not None
             ]
-            out[system["name"]][lang] = {
+            out[system["name"]][key] = {
                 "mean": statistics.fmean(values) if values else None,
                 "n": len(values),
             }
     return out
+
+
+def _by_language(
+    dataset: Dataset, systems: Sequence[dict[str, Any]], primary: Metric
+) -> dict[str, dict[str, dict[str, Any]]]:
+    return _by_group(dataset, systems, primary, lambda q: q.lang or "und")
+
+
+def apply_sampling(
+    dataset: Dataset, config: EvaluationConfig
+) -> tuple[Dataset, SampleResult | None]:
+    """Restrict ``dataset`` to the configured query sample (no-op without one)."""
+    if config.sample_size is None:
+        return dataset, None
+    result = sample_queries(
+        dataset.queries,
+        config.sample_size,
+        stratify_by=config.stratify_by,
+        seed=config.seed,
+        min_per_stratum=config.min_per_stratum,
+    )
+    qrels = {qid: rels for qid, rels in dataset.qrels.items() if qid in result.queries}
+    return Dataset(result.queries, dataset.products, qrels), result
 
 
 def evaluate(
@@ -586,6 +622,8 @@ def evaluate(
     depth = config.resolved_depth()
     primary = config.resolved_primary()
 
+    population = len(dataset.queries)
+    dataset, sampling = apply_sampling(dataset, config)
     tracker = tracker or CostTracker()
     labels, stats, judged = build_labels(
         dataset,
@@ -643,17 +681,29 @@ def evaluate(
             "confidence": config.confidence,
             "calibrate": config.calibrate,
             "calibration_sample": config.calibration_sample,
+            "sample_size": config.sample_size,
+            "stratify_by": config.stratify_by,
         },
         "dataset": {
             "queries": len(dataset.queries),
             "products": len(dataset.products),
             "gold_labels": sum(len(v) for v in dataset.qrels.values()),
             "languages": dict(sorted(langs.items())),
+            "population": population,
+            "sampling": None if sampling is None else sampling.to_dict(),
         },
         "labels": stats.to_dict(),
         "systems": systems,
         "comparison": comparison,
         "by_language": _by_language(dataset, systems, primary),
+        "by_stratum": None
+        if not config.stratify_by or config.stratify_by in {"lang", "language"}
+        else {
+            "field": config.stratify_by,
+            "systems": _by_group(
+                dataset, systems, primary, lambda q: query_stratum(q, config.stratify_by or "")
+            ),
+        },
         "judging": judge_analysis(judged, judge, config.threshold),
         "cost": tracker.to_dict(),
     }
