@@ -12,6 +12,8 @@ Built for e-commerce teams who ship ranking changes (BM25 to vectors, hybrid ret
 
 **Documentation:** <https://sadrmanesh.github.io/llm-search-eval/> · **Live sample dashboard:** <https://sadrmanesh.github.io/llm-search-eval/demo/report.html> · **Try it in the browser:** [Hugging Face Space](https://huggingface.co/spaces/sadrmanesh/llm-search-eval-demo) · **Example data:** [Hugging Face dataset](https://huggingface.co/datasets/sadrmanesh/llm-search-eval-electronics)
 
+**Read more:** [Is your new search actually better? Label gaps, LLM judge panels, and paired statistics for offline search evaluation](https://dev.to/sadrmanesh/is-your-new-search-actually-better-label-gaps-llm-judge-panels-and-paired-statistics-for-offline-490p) on Dev.to
+
 ---
 
 ## Contents
