@@ -7,6 +7,7 @@ import json
 import logging
 import threading
 from pathlib import Path
+from typing import Any
 
 from llm_search_eval.judges.base import Judgment, Vote
 from llm_search_eval.models import Product, Query
@@ -23,7 +24,10 @@ class JudgmentCache:
     """Thread-safe cache keyed by judge fingerprint, query text, and product content.
 
     Keys hash the content, not the ids, so editing a product description or the
-    query text correctly triggers a fresh judgment.
+    query text correctly triggers a fresh judgment. The fingerprint of an LLM
+    judge includes its prompt version and prompt hash, so a judgment made with a
+    different prompt has a different key and is never reused. Each entry also
+    records the judge's provenance (see :attr:`Judge.info`) under ``judge``.
     """
 
     def __init__(self, path: str | Path | None = None) -> None:
@@ -61,7 +65,13 @@ class JudgmentCache:
             return self._entries.get(key)
 
     def put(
-        self, key: str, judgment: Judgment, *, query_id: str = "", product_id: str = ""
+        self,
+        key: str,
+        judgment: Judgment,
+        *,
+        query_id: str = "",
+        product_id: str = "",
+        judge: dict[str, Any] | None = None,
     ) -> None:
         with self._lock:
             self._entries[key] = judgment
@@ -75,6 +85,8 @@ class JudgmentCache:
                 "relevance": judgment.relevance,
                 "reason": judgment.reason,
             }
+            if judge is not None:
+                record["judge"] = judge
             if judgment.votes:
                 record["votes"] = [
                     {"judge": v.judge, "relevance": v.relevance, "reason": v.reason}

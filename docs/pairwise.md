@@ -31,7 +31,9 @@ For every query, the judge sees the query and the top `--pairwise-k` products
 - **Free shortcuts.** Queries where both systems return the same top k are ties
   without a judge call, and queries where neither returns anything are skipped.
 - **Caching.** Verdicts are cached by judge, query and the exact content of
-  both lists, so only queries whose results changed are judged again.
+  both lists, so only queries whose results changed are judged again. The
+  judge part includes the pairwise prompt version and hash, which the report
+  also shows next to the model (see [prompt versions](judges.md#prompt-versions)).
 - **Budgets.** Pairwise calls share the token tracker and the `--max-cost`,
   `--max-tokens` and `--max-judgments` limits with pointwise judging.
 

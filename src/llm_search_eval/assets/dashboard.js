@@ -210,7 +210,8 @@
     if (!pw || !pw.comparisons || !pw.comparisons.length) { section.hidden = true; return; }
     $("pairwise-note").textContent = "Judge " + pw.judge + " saw the top " + pw.k + " results of both systems for each query" +
       (pw.swap ? ", once in each order; a win needs both orders to agree, otherwise it counts as a tie." : ", in one order.") +
-      " Win rate counts decided queries only, with a Wilson interval; p-values come from an exact sign test.";
+      " Win rate counts decided queries only, with a Wilson interval; p-values come from an exact sign test." +
+      (provenance(pw) ? " " + provenance(pw) : "");
     var rows = pw.comparisons.map(function (c) {
       var rate = c.win_rate_b === null ? "n/a" : (c.win_rate_b * 100).toFixed(1) + "%";
       if (c.win_rate_ci) rate += " [" + (c.win_rate_ci.low * 100).toFixed(1) + ", " + (c.win_rate_ci.high * 100).toFixed(1) + "]";
@@ -261,6 +262,19 @@
     draw();
   }
 
+  function orNa(v) { return v === null || v === undefined ? "n/a" : String(v); }
+
+  function provenance(info) {
+    if (!(info.model || info.prompt_version || info.prompt_hash)) return "";
+    var parts = [];
+    if (info.model) parts.push("model " + info.model);
+    if (info.provider) parts.push("provider " + info.provider);
+    if (info.prompt_version || info.prompt_hash) parts.push("prompt " + orNa(info.prompt_version) + " (sha256 " + orNa(info.prompt_hash) + ")");
+    if (!parts.length) return "";
+    var text = parts.join(", ");
+    return text.charAt(0).toUpperCase() + text.slice(1) + ".";
+  }
+
   function renderJudging() {
     var j = DATA.judging;
     if (!j) { $("judging").hidden = true; return; }
@@ -268,6 +282,13 @@
     barChart($("label-chart"), ["3", "2", "1", "0"].map(function (g) { return { label: "grade " + g, value: dist[g] || 0 }; }), { label: "label distribution" });
     var info = $("judging-info");
     info.appendChild(el("p", { text: "Judge: " + j.judge + ". " + j.pairs + " judged pair(s)." }));
+    var prov = provenance(j);
+    if (prov) info.appendChild(el("p", { class: "note", text: prov }));
+    if (j.panel && j.panel.judges) {
+      info.appendChild(table(["Member", "Provider", "Model", "Prompt version", "Prompt hash"], j.panel.judges.map(function (m) {
+        return el("tr", null, [td(m.judge), td(orNa(m.provider)), td(orNa(m.model)), td(orNa(m.prompt_version)), td(orNa(m.prompt_hash))]);
+      })));
+    }
     if (j.agreement) {
       var a = j.agreement;
       var k = a.krippendorff_alpha;

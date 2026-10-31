@@ -61,18 +61,27 @@ class PairwiseCache:
         with self._lock:
             return self._entries.get(key)
 
-    def put(self, key: str, verdict: PairwiseVerdict, *, query_id: str = "") -> None:
+    def put(
+        self,
+        key: str,
+        verdict: PairwiseVerdict,
+        *,
+        query_id: str = "",
+        judge: dict[str, Any] | None = None,
+    ) -> None:
         with self._lock:
             self._entries[key] = verdict
             if self.path is None:
                 return
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            record = {
+            record: dict[str, Any] = {
                 "key": key,
                 "query_id": query_id,
                 "winner": verdict.winner,
                 "reason": verdict.reason,
             }
+            if judge is not None:
+                record["judge"] = judge
             with self.path.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(record, ensure_ascii=False) + "\n")
 
@@ -126,6 +135,7 @@ def compare_pair(
         raise ConfigError("pairwise k must be a positive integer")
     tracker = tracker or CostTracker()
     cache = PairwiseCache() if cache is None else cache
+    info = judge.info
 
     def ask(
         query: Query, first: list[Product], second: list[Product]
@@ -138,7 +148,7 @@ def compare_pair(
         tracker.reserve()
         verdict = judge.compare(query, first, second)
         tracker.record([verdict.usage] if verdict.usage else [])
-        cache.put(key, verdict, query_id=query.query_id)
+        cache.put(key, verdict, query_id=query.query_id, judge=info)
         return verdict, "judge"
 
     def run_query(qid: str) -> _Outcome:
@@ -188,6 +198,10 @@ def compare_pair(
         "system_b": run_b.name,
         "judge": judge.label,
         "fingerprint": judge.fingerprint,
+        "provider": info["provider"],
+        "model": info["model"],
+        "prompt_version": info["prompt_version"],
+        "prompt_hash": info["prompt_hash"],
         "k": k,
         "swap": swap,
         "queries": len(outcomes),

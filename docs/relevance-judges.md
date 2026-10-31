@@ -3,7 +3,7 @@
 For every (query, product) pair in each system's top `depth` results, labels are resolved in this order:
 
 1. **Gold label** from `--qrels`, if present. Gold labels are never re-judged.
-2. **Cached judgment**, if the same judge configuration has already seen this exact query and product content.
+2. **Cached judgment**, if the same judge configuration, including its prompt version and prompt hash, has already seen this exact query and product content. See [prompt versions](judges.md#prompt-versions).
 3. **Judge**, if `--judge` is set. Otherwise the result is counted as unlabeled (not relevant), and the report shows the coverage gap.
 
 All systems are scored against the same merged label pool, so the ideal ranking used by nDCG and the recall denominator are identical for every system.

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-31
+
+Every result now records which judge prompt produced it.
+
+### Added
+
+- A prompt version and a prompt hash for each LLM judge prompt. `PROMPT_VERSION` and `PAIRWISE_PROMPT_VERSION` stay hand-bumped identifiers; the new `PROMPT_HASH` and `PAIRWISE_PROMPT_HASH` are the first 12 hex characters of a SHA-256 over the rendered system prompt and the user prompt template, so any edit to the text changes them.
+- `Judge.info` and `PairwiseJudge.info`, with the judge label, provider (endpoint host), model, prompt version, and prompt hash. A panel lists its members under `members`.
+- The provider, model, prompt version, and prompt hash in `report.json` (`judging`, `judging.panel.judges`, `pairwise`, and each pairwise comparison), in the Judges and Pairwise preference sections of `report.md`, and in the HTML dashboard.
+- New judgment cache and pairwise cache entries store the judge provenance under `judge`.
+
+### Changed
+
+- The OpenAI-compatible relevance and pairwise judges include the prompt hash in their fingerprint, and so in the cache key. Judgments made with a different prompt are never served from the cache. Cache entries written by earlier versions are judged again once. Mock judges are unchanged.
+- The user prompt templates are module constants (`USER_PROMPT_TEMPLATE`, `PAIRWISE_USER_PROMPT_TEMPLATE`). The text sent to the model is byte for byte the same as in 0.3.2.
+
 ## [0.3.2] - 2026-10-30
 
 A Docker image for the CLI, and the project on Hugging Face.
@@ -91,7 +107,8 @@ Initial release.
 - Bilingual electronics example dataset with three systems and a sample report.
 - Continuous integration with ruff and pytest on Python 3.10, 3.11, and 3.12.
 
-[Unreleased]: https://github.com/sadrmanesh/llm-search-eval/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/sadrmanesh/llm-search-eval/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/sadrmanesh/llm-search-eval/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/sadrmanesh/llm-search-eval/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/sadrmanesh/llm-search-eval/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/sadrmanesh/llm-search-eval/compare/v0.2.0...v0.3.0

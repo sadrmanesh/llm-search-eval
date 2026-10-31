@@ -17,7 +17,7 @@ from llm_search_eval.sampling import sample_queries
 from llm_search_eval.stats import Interval, bootstrap_ci, paired_bootstrap_ci
 from llm_search_eval.usage import Budget, CostTracker, PriceTable
 
-__version__ = "0.3.2"
+__version__ = "0.4.0"
 
 __all__ = [
     "Budget",
