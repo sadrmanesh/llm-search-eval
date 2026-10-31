@@ -4,7 +4,7 @@
 
 | File | Contents |
 | :--- | :--- |
-| `report.md` | Summary, confidence intervals, comparison with p-values and delta intervals, per-language and per-stratum results, pairwise preference, label coverage, judges and agreement, cost. |
+| `report.md` | Summary, confidence intervals, comparison with p-values and delta intervals, per-language and per-stratum results, pairwise preference, label coverage, judges (provider, model, prompt version and hash) and agreement, cost. |
 | `report.json` | Everything in the Markdown report plus per-query values, rankings, labels, and product summaries. |
 | `report.html` | Interactive dashboard in a single file. |
 | `cost.json` | Token usage, cost, and budget state (when a judge is used). |

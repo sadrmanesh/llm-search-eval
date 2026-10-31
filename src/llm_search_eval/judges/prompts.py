@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Sequence
 
 from llm_search_eval.models import RELEVANCE_SCALE, Product, Query
 
-#: Bump when the prompt changes so cached judgments are invalidated.
+#: Bump when the prompt changes. Reports and cache entries record it next to
+#: :data:`PROMPT_HASH`, which changes on any edit to the template text even
+#: when the version is not bumped.
 PROMPT_VERSION = "relevance-v1"
 
 _LANGUAGE_NAMES = {"fa": "Persian (Farsi)", "en": "English"}
@@ -31,6 +34,19 @@ Respond with a single JSON object and nothing else:
 {{"relevance": <integer 0-3>, "reason": "<one short sentence in English>"}}"""
 
 
+USER_PROMPT_TEMPLATE = """\
+Query language: {language}
+Search query: {query}
+
+Product:
+{product}"""
+
+
+def prompt_hash(*templates: str) -> str:
+    """First 12 hex characters of the SHA-256 of the templates, joined by a unit separator."""
+    return hashlib.sha256("\x1f".join(templates).encode("utf-8")).hexdigest()[:12]
+
+
 def system_prompt() -> str:
     scale = "\n".join(f"{grade} = {meaning}" for grade, meaning in RELEVANCE_SCALE.items())
     return SYSTEM_PROMPT.format(scale=scale)
@@ -38,11 +54,13 @@ def system_prompt() -> str:
 
 def user_prompt(query: Query, product: Product, max_product_chars: int = 2000) -> str:
     language = _LANGUAGE_NAMES.get(query.lang or "", query.lang or "unknown")
-    return (
-        f"Query language: {language}\n"
-        f"Search query: {query.text}\n\n"
-        f"Product:\n{product.to_text(max_product_chars)}"
+    return USER_PROMPT_TEMPLATE.format(
+        language=language, query=query.text, product=product.to_text(max_product_chars)
     )
+
+
+#: Hash of the rendered system prompt and the user prompt template.
+PROMPT_HASH = prompt_hash(system_prompt(), USER_PROMPT_TEMPLATE)
 
 
 def build_messages(query: Query, product: Product, max_product_chars: int = 2000) -> list[dict]:
@@ -52,7 +70,8 @@ def build_messages(query: Query, product: Product, max_product_chars: int = 2000
     ]
 
 
-#: Bump when the pairwise prompt changes so cached verdicts are invalidated.
+#: Bump when the pairwise prompt changes. :data:`PAIRWISE_PROMPT_HASH` is
+#: recorded with it.
 PAIRWISE_PROMPT_VERSION = "pairwise-v1"
 
 PAIRWISE_SYSTEM_PROMPT = """\
@@ -75,6 +94,17 @@ Respond with a single JSON object and nothing else:
 {"winner": "A" | "B" | "tie", "reason": "<one short sentence in English>"}"""
 
 
+PAIRWISE_USER_PROMPT_TEMPLATE = """\
+Query language: {language}
+Search query: {query}
+
+Results A:
+{first}
+
+Results B:
+{second}"""
+
+
 def _result_list(products: Sequence[Product], max_product_chars: int) -> str:
     if not products:
         return "(no results)"
@@ -92,11 +122,11 @@ def pairwise_user_prompt(
     max_product_chars: int = 400,
 ) -> str:
     language = _LANGUAGE_NAMES.get(query.lang or "", query.lang or "unknown")
-    return (
-        f"Query language: {language}\n"
-        f"Search query: {query.text}\n\n"
-        f"Results A:\n{_result_list(first, max_product_chars)}\n\n"
-        f"Results B:\n{_result_list(second, max_product_chars)}"
+    return PAIRWISE_USER_PROMPT_TEMPLATE.format(
+        language=language,
+        query=query.text,
+        first=_result_list(first, max_product_chars),
+        second=_result_list(second, max_product_chars),
     )
 
 
@@ -113,3 +143,7 @@ def build_pairwise_messages(
             "content": pairwise_user_prompt(query, first, second, max_product_chars),
         },
     ]
+
+
+#: Hash of the pairwise system prompt and the pairwise user prompt template.
+PAIRWISE_PROMPT_HASH = prompt_hash(PAIRWISE_SYSTEM_PROMPT, PAIRWISE_USER_PROMPT_TEMPLATE)

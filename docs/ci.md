@@ -59,7 +59,7 @@ jobs:
 
       - name: Evaluate rankings
         id: search-eval
-        uses: sadrmanesh/llm-search-eval@v0.3.2
+        uses: sadrmanesh/llm-search-eval@v0.4.0
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         with:

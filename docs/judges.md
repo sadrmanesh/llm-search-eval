@@ -75,6 +75,18 @@ The gold agreement table reports, for the judge and for every panel member:
 - mean bias (positive means more lenient than the gold labels);
 - a confusion matrix in `report.json` (rows are gold grades, columns are judge grades).
 
+## Prompt versions
+
+Every LLM judge prompt has a version and a hash. `PROMPT_VERSION` (`relevance-v1`) and `PAIRWISE_PROMPT_VERSION` (`pairwise-v1`) in `llm_search_eval.judges.prompts` are bumped by hand when a prompt changes. `PROMPT_HASH` and `PAIRWISE_PROMPT_HASH` are the first 12 hex characters of a SHA-256 over the rendered system prompt and the user prompt template, so they change on any edit to the text, even one where the version was not bumped.
+
+The judge's provider (the host of its endpoint, for example `api.openai.com` or `localhost:11434`), model, prompt version, and prompt hash are written to:
+
+- `report.json`, in `judging` and `pairwise` and in each pairwise comparison, and for a panel in `judging.panel.judges`, one entry per member;
+- the Judges and Pairwise preference sections of `report.md` and the HTML dashboard;
+- every new entry in the judgment cache and the pairwise cache, under `judge`.
+
+The prompt version and hash are also part of the judge fingerprint, which is part of the cache key. A judgment made with a different prompt has a different key, so it is never served from the cache; the pair is judged again. Cache files written before 0.4.0 have keys without the hash, so their entries are judged again once after upgrading. The mock judges use no prompt, so their prompt fields are `null` and their cache keys are unchanged. Custom judges report `null` fields unless they override `info`.
+
 ## Python API
 
 ```python

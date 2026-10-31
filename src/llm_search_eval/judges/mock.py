@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+from typing import Any
 
-from llm_search_eval.judges.base import Judge, Judgment, register_judge
+from llm_search_eval.judges.base import Judge, Judgment, judge_info, register_judge
 from llm_search_eval.models import MAX_RELEVANCE, MIN_RELEVANCE, Product, Query
 from llm_search_eval.text import tokenize
 
@@ -43,6 +44,11 @@ class MockJudge(Judge):
     @property
     def label(self) -> str:
         return "mock" if not self.noise else f"mock(noise={self.noise:g},seed={self.seed})"
+
+    @property
+    def info(self) -> dict[str, Any]:
+        # Lexical overlap, no model and no prompt.
+        return judge_info(self.label, provider="mock")
 
     def _perturb(self, grade: int, query: Query, product: Product) -> int:
         if not self.noise:

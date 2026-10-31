@@ -18,10 +18,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from llm_search_eval.errors import ConfigError, JudgeError
-from llm_search_eval.judges.base import TokenUsage
+from llm_search_eval.judges.base import TokenUsage, endpoint_provider, judge_info
 from llm_search_eval.judges.mock import MockJudge
 from llm_search_eval.judges.openai_compat import DEFAULT_MODEL, OpenAICompatibleJudge
-from llm_search_eval.judges.prompts import PAIRWISE_PROMPT_VERSION, build_pairwise_messages
+from llm_search_eval.judges.prompts import (
+    PAIRWISE_PROMPT_HASH,
+    PAIRWISE_PROMPT_VERSION,
+    build_pairwise_messages,
+)
 from llm_search_eval.models import Product, Query
 
 #: Verdict values, always from the point of view of the order shown to the judge.
@@ -57,6 +61,11 @@ class PairwiseJudge(ABC):
     @property
     def label(self) -> str:
         return self.name
+
+    @property
+    def info(self) -> dict[str, Any]:
+        """Provenance: ``judge``, ``provider``, ``model``, ``prompt_version``, ``prompt_hash``."""
+        return judge_info(self.label)
 
     @abstractmethod
     def compare(
@@ -173,6 +182,10 @@ class MockPairwiseJudge(PairwiseJudge):
     def label(self) -> str:
         return "mock"
 
+    @property
+    def info(self) -> dict[str, Any]:
+        return judge_info(self.label, provider="mock")
+
     def compare(
         self, query: Query, first: Sequence[Product], second: Sequence[Product]
     ) -> PairwiseVerdict:
@@ -212,11 +225,25 @@ class OpenAIPairwiseJudge(PairwiseJudge):
     @property
     def fingerprint(self) -> str:
         c = self._client
-        return f"pairwise-openai:{c.base_url}:{c.model}:t={c.temperature}:{PAIRWISE_PROMPT_VERSION}"
+        return (
+            f"pairwise-openai:{c.base_url}:{c.model}:t={c.temperature}"
+            f":{PAIRWISE_PROMPT_VERSION}:{PAIRWISE_PROMPT_HASH}"
+        )
 
     @property
     def label(self) -> str:
         return f"openai:{self._client.model}"
+
+    @property
+    def info(self) -> dict[str, Any]:
+        c = self._client
+        return judge_info(
+            self.label,
+            endpoint_provider(c.base_url),
+            c.model,
+            PAIRWISE_PROMPT_VERSION,
+            PAIRWISE_PROMPT_HASH,
+        )
 
     def compare(
         self, query: Query, first: Sequence[Product], second: Sequence[Product]

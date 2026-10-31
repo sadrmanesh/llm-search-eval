@@ -7,9 +7,10 @@ import statistics
 from collections import Counter
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from llm_search_eval.errors import ConfigError, JudgeError
-from llm_search_eval.judges.base import Judge, Judgment, Vote
+from llm_search_eval.judges.base import Judge, Judgment, Vote, judge_info
 from llm_search_eval.models import Product, Query
 
 AGGREGATIONS = ("majority", "mean", "median", "min", "max")
@@ -87,6 +88,16 @@ class JudgePanel(Judge):
     @property
     def label(self) -> str:
         return f"panel({self.aggregation}: {', '.join(self.labels)})"
+
+    @property
+    def info(self) -> dict[str, Any]:
+        """Panel provenance with one entry per member under ``members``."""
+        out = judge_info(self.label, provider="panel")
+        out["members"] = [
+            {**member.info, "judge": name}
+            for member, name in zip(self.judges, self.labels, strict=True)
+        ]
+        return out
 
     def _vote(self, index: int, query: Query, product: Product) -> Vote:
         member = self.judges[index]

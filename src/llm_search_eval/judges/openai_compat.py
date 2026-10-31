@@ -19,8 +19,15 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from llm_search_eval.errors import ConfigError, JudgeError
-from llm_search_eval.judges.base import Judge, Judgment, TokenUsage, register_judge
-from llm_search_eval.judges.prompts import PROMPT_VERSION, build_messages
+from llm_search_eval.judges.base import (
+    Judge,
+    Judgment,
+    TokenUsage,
+    endpoint_provider,
+    judge_info,
+    register_judge,
+)
+from llm_search_eval.judges.prompts import PROMPT_HASH, PROMPT_VERSION, build_messages
 from llm_search_eval.models import MAX_RELEVANCE, MIN_RELEVANCE, Product, Query
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
@@ -124,11 +131,20 @@ class OpenAICompatibleJudge(Judge):
 
     @property
     def fingerprint(self) -> str:
-        return f"openai:{self.base_url}:{self.model}:t={self.temperature}:{PROMPT_VERSION}"
+        return (
+            f"openai:{self.base_url}:{self.model}:t={self.temperature}"
+            f":{PROMPT_VERSION}:{PROMPT_HASH}"
+        )
 
     @property
     def label(self) -> str:
         return f"openai:{self.model}"
+
+    @property
+    def info(self) -> dict[str, Any]:
+        return judge_info(
+            self.label, endpoint_provider(self.base_url), self.model, PROMPT_VERSION, PROMPT_HASH
+        )
 
     def _payload(self, query: Query, product: Product) -> dict[str, Any]:
         return self._chat_payload(build_messages(query, product, self.max_product_chars))

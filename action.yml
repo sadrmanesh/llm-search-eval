@@ -166,7 +166,7 @@ inputs:
     default: "3.12"
   package:
     description: >-
-      pip requirement to install, for example `llm-search-eval==0.3.2`. Defaults
+      pip requirement to install, for example `llm-search-eval==0.4.0`. Defaults
       to the version of the action itself.
     required: false
     default: ""

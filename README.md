@@ -75,7 +75,7 @@ pip install llm-search-eval
 or straight from a release tag:
 
 ```bash
-pip install "git+https://github.com/sadrmanesh/llm-search-eval@v0.3.2"
+pip install "git+https://github.com/sadrmanesh/llm-search-eval@v0.4.0"
 ```
 
 Optional extras let the connectors reuse official clients: `llm-search-eval[elasticsearch]`, `[opensearch]`, and `[algolia]`. They are not needed for the default HTTP mode.
@@ -83,7 +83,7 @@ Optional extras let the connectors reuse official clients: `llm-search-eval[elas
 Or run the Docker image from [Docker Hub](https://hub.docker.com/r/sadrmanesh/llm-search-eval) or the GitHub Container Registry (`ghcr.io/sadrmanesh/llm-search-eval`), for `linux/amd64` and `linux/arm64`. Mount your data into `/work`:
 
 ```bash
-docker run --rm -v "$PWD:/work" sadrmanesh/llm-search-eval:0.3.2 run \
+docker run --rm -v "$PWD:/work" sadrmanesh/llm-search-eval:0.4.0 run \
   -q eval/queries.jsonl -p eval/products.jsonl --qrels eval/qrels.csv \
   -s bm25=eval/runs/bm25.jsonl -s hybrid=eval/runs/hybrid.trec --judge mock -o reports
 ```
@@ -177,10 +177,12 @@ Every file can be `.jsonl`, `.json`, `.csv`, or `.tsv`. Field names are case-ins
 For every (query, product) pair in each system's top `depth` results, labels are resolved in this order:
 
 1. **Gold label** from `--qrels`, if present. Gold labels are never re-judged.
-2. **Cached judgment**, if the same judge configuration has already seen this exact query and product content.
+2. **Cached judgment**, if the same judge configuration, including its prompt version and prompt hash, has already seen this exact query and product content.
 3. **Judge**, if `--judge` is set. Otherwise the result is counted as unlabeled (not relevant), and the report shows the coverage gap.
 
 All systems are scored against the same merged label pool, so the ideal ranking used by nDCG and the recall denominator are identical for every system.
+
+Every result records which prompt produced it. The OpenAI-compatible judges carry a prompt version (`relevance-v1`, `pairwise-v1`) and a 12-character SHA-256 of the prompt text. Both, with the provider and model, are written to `report.json`, the Judges and Pairwise sections of `report.md` and the dashboard, and each cache entry. They are also part of the cache key, so a judgment made with a different prompt is never reused. See [prompt versions](https://sadrmanesh.github.io/llm-search-eval/judges/#prompt-versions).
 
 | Judge spec | Use it for |
 | :--- | :--- |
@@ -326,7 +328,7 @@ It checks metric floors and drops against the baseline system or against a `--re
 The repository is also a reusable GitHub Action that runs the evaluation, applies the gate, writes the result to the job summary, and posts it as a pull request comment that is updated on every push:
 
 ```yaml
-- uses: sadrmanesh/llm-search-eval@v0.3.2
+- uses: sadrmanesh/llm-search-eval@v0.4.0
   env:
     OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   with:

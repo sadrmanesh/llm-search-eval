@@ -259,6 +259,7 @@ def build_labels(
         cache = JudgmentCache()
     if tracker is None:
         tracker = CostTracker()
+    provenance = judge.info
 
     def grade(pair: tuple[str, str]) -> JudgedPair:
         qid, pid = pair
@@ -272,7 +273,7 @@ def build_labels(
         tracker.reserve()
         result = judge.judge(query, product)
         tracker.record(result.usages())
-        cache.put(key, result, query_id=qid, product_id=pid)
+        cache.put(key, result, query_id=qid, product_id=pid, judge=provenance)
         return JudgedPair(qid, pid, result.relevance, result.reason, "judge", result.votes, gold)
 
     done = 0
@@ -314,6 +315,10 @@ def build_labels(
     return labels, stats, judged
 
 
+def _provenance(info: dict[str, Any]) -> dict[str, Any]:
+    return {k: info.get(k) for k in ("provider", "model", "prompt_version", "prompt_hash")}
+
+
 def judge_analysis(
     judged: Sequence[JudgedPair], judge: Judge | None, threshold: int
 ) -> dict[str, Any] | None:
@@ -325,6 +330,7 @@ def judge_analysis(
     out: dict[str, Any] = {
         "judge": judge.label,
         "fingerprint": judge.fingerprint,
+        **_provenance(judge.info),
         "panel": None,
         "pairs": len(judged),
         "label_distribution": {str(g): distribution.get(g, 0) for g in range(4)},
@@ -337,6 +343,7 @@ def judge_analysis(
             "members": members,
             "aggregation": judge.aggregation,
             "min_votes": judge.min_votes,
+            "judges": [{"judge": m["judge"], **_provenance(m)} for m in judge.info["members"]],
         }
         with_votes = [p for p in judged if p.votes]
         ratings: dict[str, list[int | None]] = {name: [] for name in members}
@@ -701,6 +708,7 @@ def evaluate(
         shared_cache = PairwiseCache() if pairwise_cache is None else pairwise_cache
         pairwise = {
             "judge": pairwise_judge.label,
+            **_provenance(pairwise_judge.info),
             "k": config.pairwise_k,
             "swap": config.pairwise_swap,
             "comparisons": [

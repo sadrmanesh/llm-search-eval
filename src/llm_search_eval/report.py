@@ -265,6 +265,30 @@ def _ratio(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.1%}"
 
 
+def _cell(value: Any) -> str:
+    return "n/a" if value is None else f"`{_escape(str(value))}`"
+
+
+def provenance_line(info: dict[str, Any]) -> str:
+    """One sentence naming the judge's provider, model, and prompt version and hash.
+
+    Empty for judges without a model or prompt, such as the mock judges and panels.
+    """
+    if not (info.get("model") or info.get("prompt_version") or info.get("prompt_hash")):
+        return ""
+    parts = []
+    if info.get("model"):
+        parts.append(f"model {_cell(info['model'])}")
+    if info.get("provider"):
+        parts.append(f"provider {_cell(info['provider'])}")
+    if info.get("prompt_version") or info.get("prompt_hash"):
+        parts.append(
+            f"prompt {_cell(info.get('prompt_version'))} (sha256 {_cell(info.get('prompt_hash'))})"
+        )
+    text = ", ".join(parts)
+    return text[0].upper() + text[1:] + "."
+
+
 def _judging_section(judging: dict[str, Any] | None) -> list[str]:
     if not judging:
         return []
@@ -275,6 +299,25 @@ def _judging_section(judging: dict[str, Any] | None) -> list[str]:
         "Grade distribution: " + ", ".join(f"{g}: {dist[g]}" for g in ("3", "2", "1", "0")) + "."
     )
     out.append("")
+    provenance = provenance_line(judging)
+    if provenance:
+        out += [provenance, ""]
+    panel = judging.get("panel") or {}
+    if panel.get("judges"):
+        out += _table(
+            ["Member", "Provider", "Model", "Prompt version", "Prompt hash"],
+            (
+                [
+                    f"`{_escape(m['judge'])}`",
+                    _cell(m.get("provider")),
+                    _cell(m.get("model")),
+                    _cell(m.get("prompt_version")),
+                    _cell(m.get("prompt_hash")),
+                ]
+                for m in panel["judges"]
+            ),
+        )
+        out.append("")
     agreement = judging.get("agreement")
     if agreement:
         alpha = agreement["krippendorff_alpha"]
@@ -344,6 +387,9 @@ def _pairwise_section(pairwise: dict[str, Any] | None, cfg: dict[str, Any]) -> l
         f"two systems side by side for each query ({order}).",
         "",
     ]
+    provenance = provenance_line(pairwise)
+    if provenance:
+        out += [provenance, ""]
     rows = []
     for c in pairwise["comparisons"]:
         ci = c.get("win_rate_ci")

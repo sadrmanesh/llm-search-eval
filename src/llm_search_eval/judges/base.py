@@ -80,12 +80,45 @@ class Judge(ABC):
         """Short human readable name used in reports and agreement tables."""
         return self.name
 
+    @property
+    def info(self) -> dict[str, Any]:
+        """Provenance written into reports and cache entries.
+
+        Keys: ``judge`` (the label), ``provider``, ``model``, ``prompt_version``,
+        and ``prompt_hash``. Values a judge does not have are ``None``.
+        """
+        return judge_info(self.label)
+
     @abstractmethod
     def judge(self, query: Query, product: Product) -> Judgment:
         """Grade ``product`` for ``query``."""
 
     def close(self) -> None:  # noqa: B027 - optional hook, intentionally empty
         """Release resources such as HTTP sessions."""
+
+
+def judge_info(
+    label: str,
+    provider: str | None = None,
+    model: str | None = None,
+    prompt_version: str | None = None,
+    prompt_hash: str | None = None,
+) -> dict[str, Any]:
+    """The provenance record shared by relevance and pairwise judges."""
+    return {
+        "judge": label,
+        "provider": provider,
+        "model": model,
+        "prompt_version": prompt_version,
+        "prompt_hash": prompt_hash,
+    }
+
+
+def endpoint_provider(base_url: str) -> str:
+    """Host (and port) of an OpenAI-compatible endpoint, for example ``api.openai.com``."""
+    from urllib.parse import urlsplit
+
+    return urlsplit(base_url).netloc or base_url
 
 
 JudgeFactory = Callable[..., Judge]
