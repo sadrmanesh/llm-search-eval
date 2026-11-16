@@ -38,6 +38,7 @@ Built for e-commerce teams who ship ranking changes (BM25 to vectors, hybrid ret
 - [Documentation](#documentation)
 - [Roadmap](#roadmap)
 - [خلاصه فارسی](#خلاصه-فارسی)
+- [Citation / Technical report](#citation--technical-report)
 
 ## Why
 
@@ -450,6 +451,7 @@ The full documentation site is at <https://sadrmanesh.github.io/llm-search-eval/
 | [docs/connectors.md](docs/connectors.md) | Elasticsearch, OpenSearch, Algolia, Meilisearch, Typesense, HTTP/JSON |
 | [docs/docker.md](docs/docker.md) | The Docker image on Docker Hub and GHCR |
 | [docs/releasing.md](docs/releasing.md) | Versioning and PyPI publishing |
+| [docs/citation.md](docs/citation.md) | Technical report DOI and BibTeX |
 
 ## Roadmap
 
@@ -474,7 +476,30 @@ Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for
 
 نسخه 0.3.0 مقایسه دوبه دو با داور مدل زبانی، بازه اطمینان بوت استرپ برای هر معیار و هر اختلاف، نمونه گیری لایه ای از پرسش ها، دستور `estimate` برای برآورد هزینه پیش از اجرا، دیدگاه خودکار و به روز شونده در Pull Request، و اتصال به Meilisearch و Typesense و هر API جستجوی JSON را اضافه می کند. داشبورد هم بازه های اطمینان، نتایج هر لایه و نمای مقایسه دوبه دو را نشان می دهد.
 
+گزارش فنی نسخه ۰٫۵٫۰ (داوری‌نشده) در figshare: https://doi.org/10.6084/m9.figshare.35004088
+
 </div>
+
+## Citation / Technical report
+
+A technical report on llm-search-eval v0.5.0 (not peer-reviewed) is available on figshare:
+
+Sadrmanesh, Mohammad Naser (2026). *Statistical E-Commerce Search Evaluation with LLM Relevance Judge Panels and CI Quality Gates: A Technical Analysis of llm-search-eval v0.5.0*. figshare. https://doi.org/10.6084/m9.figshare.35004088
+
+Software archive: https://doi.org/10.5281/zenodo.23944666
+
+```bibtex
+@techreport{sadrmanesh2026llmsearcheval,
+  author      = {Sadrmanesh, Mohammad Naser},
+  title       = {Statistical E-Commerce Search Evaluation with LLM Relevance Judge Panels and CI Quality Gates: A Technical Analysis of llm-search-eval v0.5.0},
+  year        = {2026},
+  month       = nov,
+  institution = {figshare},
+  doi         = {10.6084/m9.figshare.35004088},
+  url         = {https://doi.org/10.6084/m9.figshare.35004088},
+  note        = {Technical report, not peer-reviewed}
+}
+```
 
 ## License
 
