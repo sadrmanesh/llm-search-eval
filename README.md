@@ -38,6 +38,7 @@ Built for e-commerce teams who ship ranking changes (BM25 to vectors, hybrid ret
 - [Documentation](#documentation)
 - [Roadmap](#roadmap)
 - [خلاصه فارسی](#خلاصه-فارسی)
+- [Featured In](#featured-in)
 - [Citation / Technical report](#citation--technical-report)
 
 ## Why
@@ -478,7 +479,13 @@ Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for
 
 گزارش فنی نسخه ۰٫۵٫۰ (داوری‌نشده) در figshare: https://doi.org/10.6084/m9.figshare.35004088
 
+این ابزار در دانش‌گراف Awesome Search هم فهرست شده است: https://frutik.github.io/awesome-search/Tools/llm-search-eval
+
 </div>
+
+## Featured In
+
+llm-search-eval is listed in [Awesome Search](https://frutik.github.io/awesome-search/Index), a knowledge graph of information retrieval and search resources. See the [llm-search-eval entry](https://frutik.github.io/awesome-search/Tools/llm-search-eval).
 
 ## Citation / Technical report
 

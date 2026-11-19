@@ -120,6 +120,10 @@ Offline search evaluation usually breaks down in the same places:
 
 </div>
 
+## Featured In
+
+llm-search-eval is listed in [Awesome Search](https://frutik.github.io/awesome-search/Index), a knowledge graph of information retrieval and search resources. See the [llm-search-eval entry](https://frutik.github.io/awesome-search/Tools/llm-search-eval).
+
 ## License
 
 MIT. Copyright (c) 2026 Naser Sadrmanesh.
